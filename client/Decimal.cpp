@@ -3,7 +3,7 @@
 
 #include "StdAfx.h"
 #include "Decimal.h"
-
+#include <iostream>
 Decimal DecimalFunctions::add(Decimal decimal1, Decimal decimal2) {
     unsigned int flags;
     return __bid64_add(decimal1, decimal2, 0, &flags);
@@ -48,7 +48,14 @@ std::string DecimalFunctions::decimalToString(Decimal value) {
     char buf[64];
     unsigned int flags;
     __bid64_to_string(buf, value, &flags); // convert Decimal value to string using bid64_to_string function
-    return buf;
+                                           //
+return std::string(buf);
+
+//  std::array<char, 10> buffer;
+//  auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+//  std::string s(buffer.data(), ptr);
+//
+//  return s;
 }
 
 std::string DecimalFunctions::decimalStringToDisplay(Decimal value) {

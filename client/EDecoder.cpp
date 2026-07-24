@@ -4385,8 +4385,7 @@ int EDecoder::parseAndProcessMsg(const char*& beginPtr, const char* endPtr) {
 				break;
 			}
 			}
-		}
-		else {
+		} else {
 			switch (msgId) {
 			case TICK_PRICE:
 				ptr = processTickPriceMsg(ptr, endPtr);

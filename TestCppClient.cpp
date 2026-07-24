@@ -4,9 +4,14 @@
 #include "StdAfx.h"
 
 #include "TestCppClient.h"
-
+#include <locale.h>
+#include <fmt/format.h> // For general formatting configurations
+#include <fmt/base.h>   // For basic core printing utilities
+#include <locale>
 #include "EClientSocket.h"
 #include "EPosixClientSocketPlatform.h"
+
+
 
 #include "Contract.h"
 #include "Order.h"
@@ -47,16 +52,40 @@
 const int PING_DEADLINE = 2; // seconds
 const int SLEEP_BETWEEN_PINGS = 30; // seconds
 
+
+void CurrentAccountState::ctor_helpers() {
+  SMA_ = SMA_default_;
+  buying_power_ = buying_power_default_;
+}
+
+void CurrentAccountState::dtor_helpers() {
+}
+
+CurrentAccountState::CurrentAccountState() {
+  ctor_helpers();
+
+}
+CurrentAccountState::~CurrentAccountState() {
+  dtor_helpers();
+
+}
+
+
+void CurrentAccountState::print() const {
+
+  std::cout << "BP:" << buying_power_ << " SMA:" << SMA_ << " "  << std::endl;
+
+}
 ///////////////////////////////////////////////////////////
 // member funcs
 //! [socket_init]
 TestCppClient::TestCppClient() :
-      m_osSignal(2000)//2-seconds timeout
-    , m_pClient(new EClientSocket(this, &m_osSignal))
-	, m_state(ST_CONNECT)
-	, m_sleepDeadline(0)
-	, m_orderId(0)
-    , m_extraAuth(false)
+  m_osSignal(2000)//2-seconds timeout
+  , m_pClient(new EClientSocket(this, &m_osSignal))
+  , m_state(ST_CONNECT)
+  , m_sleepDeadline(0)
+  , m_orderId(0)
+  , m_extraAuth(false)
 {
 }
 
@@ -70,65 +99,171 @@ void TestCppClient::printAccountSummary() {
 //! [socket_init]
 TestCppClient::~TestCppClient()
 {
-	// destroy the reader before the client
-	if( m_pReader )
-		m_pReader.reset();
+  // destroy the reader before the client
+  if( m_pReader )
+    m_pReader.reset();
 
-	delete m_pClient;
+  delete m_pClient;
+}
+
+double TestCppClient::get_ticker_price(std::string ticker) {
+
+  return 0;
+
+  double price = {0.0};
+
+  Contract contract;
+  contract.symbol = std::string(ticker);
+  contract.secType = "STK";
+  contract.exchange = "SMART";
+  contract.currency = "USD";
+  std::cout << "requesting market data with id:" << m_orderId << std::endl;
+  // m_pReader->processMsgs();     // Processes messages
+  m_pClient->reqMarketDataType(1); 
+  m_pClient->reqMktData(m_orderId++, contract, "", true, false, TagValueListSPtr());
+  //  m_pClient->reqTickByTickData(m_orderId++, contract, "Last", 0, false);
+
+  std::cout << "done requesting market data" << std::endl;
+
+  return 0;
+
+  //
+  //    // Request ID, Contract, End Date (YYYYMMDD HH:MM:SS), Duration, Bar Size, WhatToShow, UseRTH, FormatDate
+  //   m_pClient->reqHistoricalData(
+  //       m_orderId++, 
+  //       contract1, 
+  //       "20260605-04:00:00", 
+  //       "1 D",          // Duration (e.g., 1 D, 1 W, 1 M, 1 Y)
+  //       "5 secs",       // Bar size (e.g., 1 min, 5 mins, 1 hour, 1 day)
+  //       "TRADES",       // What to show: TRADES, MIDPOINT, BID, ASK, HISTORICAL_VOLATILITY, etc.
+  //       1,              // Use Regular Trading Hours (1 = Yes, 0 = No)
+  //       1,              // Date format (1 = yyyymmdd hh:mm:ss, 2 = epoch)
+  //       false,          // Keep up to date
+  //       TagValueListSPtr()
+  //   );
+  //   getchar();
+  ////
+  //
+  //
+  //  //m_osSignal.waitForSignal();
+  //
+
+  request_mutex_.lock();
+  m_pClient->reqPositions();
+
+  //m_pClient->reqAccountUpdates(true, ""); 
+
+  print_position_details();
+
+  //  ExecutionFilter executionFilter1;
+  //  executionFilter1.m_lastNDays = 1;
+  //  m_pClient->reqExecutions(m_orderId++, executionFilter1);
+  //  return 0;
+  //ExecutionFilter executionFilter2;
+  //executionFilter2.m_specificDates = {20250303, 20250302};
+  //m_pClient->reqExecutions(m_orderId++, executionFilter2);
+
+  //return 0;
+  // m_pClient->reqAccountUpdates(true, "DUQ526162");
+  //  m_pClient->reqAllOpenOrders();
+  //delayedTickDataOperation();
+
+  //  Contract contract;
+  //  contract.symbol = std::string(ticker);
+  //  contract.secType = "STK";
+  //  contract.exchange = "SMART";
+  //  contract.currency = "USD";
+  //  m_osSignal.waitForSignal();
+
+
+  //  //int tickerId = 1001;
+  //  //int numberOfTicks = 1; // 0 for streaming
+  //  //bool ignoreSize = false;
+  ////  m_pClient->reqTickByTickData(m_orderId++, contract, "Last", numberOfTicks, ignoreSize);
+
+
+
+  // // m_pClient->checkMessages();
+  // // 3. Request Market Data
+  // //  reqMktData(tickerId, contract, genericTickList, snapshot, regulatorySnapshot, mktDataOptions)
+  // Here, snapshot is set to 'false' for streaming real-time data
+  //  reqMktData(1001, contract, "", false, false, TagValueListSPtr());
+
+
+
+
+  return price;
+
 }
 
 bool TestCppClient::connect(const char *host, int port, int clientId)
 {
-	// trying to connect
-	printf( "Connecting to %s:%d clientId:%d\n", !( host && *host) ? "127.0.0.1" : host, port, clientId);
+  // trying to connect
+  //	printf( "Connecting to %s:%d clientId:%d\n", !( host && *host) ? "192.168.50.84" : host, port, clientId);
+  //  host = {"192.168.50.84"};
+  //  host = {"100.17.37.154"};
+  printf( "Connecting to %s:%d clientId:%d\n", !( host && *host) ? "127.0.0.1" : host, port, clientId);
 
-	//! [connect]
-	bool bRes = m_pClient->eConnect( host, port, clientId, m_extraAuth);
-	//! [connect]
+  //! [connect]
+  bool bRes = m_pClient->eConnect( host, port, clientId, m_extraAuth);
+  //! [connect]
 
-	if (bRes) {
-		printf( "Connected to %s:%d clientId:%d serverVersion: %d\n", m_pClient->host().c_str(), m_pClient->port(), clientId, m_pClient->EClient::serverVersion());
-		//! [ereader]
-		m_pReader = std::unique_ptr<EReader>( new EReader(m_pClient, &m_osSignal) );
-		m_pReader->start();
-		//! [ereader]
+  if (bRes) {
+    printf( "Connected to %s:%d clientId:%d serverVersion: %d\n", m_pClient->host().c_str(), m_pClient->port(), clientId, m_pClient->EClient::serverVersion());
+    //! [ereader]
+    m_pReader = std::unique_ptr<EReader>( new EReader(m_pClient, &m_osSignal) );
+    m_pReader->start();
+    //! [ereader]
     reader_thread.reset(new std::jthread([this](){ 
 
           while (m_pClient->isConnected()) {
           m_osSignal.waitForSignal(); // Waits for notification
           m_pReader->processMsgs();     // Processes messages
-          }
-          }));
-	}
-	else
-		printf( "Cannot connect to %s:%d clientId:%d\n", m_pClient->host().c_str(), m_pClient->port(), clientId);
+          }}));
+    //                                  // std::this_thread::sleep_for(std::chrono::seconds(2));
+    // reader_thread->request_stop();
 
-	return bRes;
+
+
+
+    // 2. Create the reader
+    //     ..m_pReader = std::make_unique<EReader>(m_pClient, &m_osSignal);
+    //     ..m_pReader->start();
+    //
+    //     ..// 3. Keep the thread alive and continuously process messages
+    //       ..while (m_pClient->isConnected()) {
+    //         ..    m_osSignal.waitForSignal();
+    //         ..    m_pReader->processMsgs();
+    //         ..}
+  } else
+    printf( "Cannot connect to %s:%d clientId:%d\n", m_pClient->host().c_str(), m_pClient->port(), clientId);
+
+  return bRes;
 }
 
 void TestCppClient::disconnect() const
 {
-	m_pClient->eDisconnect();
+  m_pClient->eDisconnect();
 
-	printf ( "Disconnected\n");
+  printf ( "Disconnected\n");
 }
 
 bool TestCppClient::isConnected() const
 {
-	return m_pClient->isConnected();
+  return m_pClient->isConnected();
 }
 
 void TestCppClient::setConnectOptions(const std::string& connectOptions)
 {
-	m_pClient->setConnectOptions(connectOptions);
+  m_pClient->setConnectOptions(connectOptions);
 }
 
 void TestCppClient::setOptionalCapabilities(const std::string& optionalCapabilities)
 {
-    m_pClient->setOptionalCapabilities(optionalCapabilities);
+  m_pClient->setOptionalCapabilities(optionalCapabilities);
 }
 
-void TestCppClient::placeOrderCustom(int order_action_type, std::string symbol, double limit_price, int total_quantity_input, int order_type) {
+void TestCppClient::placeOrderCustom(std::string order_action_type_str, std::string symbol, double limit_price, int total_quantity_input, std::string order_type_input) {
 
   // 1. Define the Contract (e.g., AAPL Stock)
   Contract contract;
@@ -141,83 +276,86 @@ void TestCppClient::placeOrderCustom(int order_action_type, std::string symbol, 
 
 
   // 2. Define the Order (e.g., Buy 100 shares at $150)
-//  int m_orderId = {0};
-//  // reqCurrentTime();
-//  // 3. Place the order
-//  // m_orderId should be managed/incremented from nextValidId()
-//  //  m_pClient->placeOrder(m_orderId++, contract, order);
-//  std::cout << "requesting contract details" << std::endl;
-//  std::cout << "m_pClient:" << m_pClient << std::endl;
-//   m_pClient->reqContractDetails(++m_orderId, contract);
-//
+  //  int m_orderId = {0};
+  //  // reqCurrentTime();
+  //  // 3. Place the order
+  //  // m_orderId should be managed/incremented from nextValidId()
+  //  //  m_pClient->placeOrder(m_orderId++, contract, order);
+  //  std::cout << "requesting contract details" << std::endl;
+  //  std::cout << "m_pClient:" << m_pClient << std::endl;
+  //   m_pClient->reqContractDetails(++m_orderId, contract);
+  //
 
 
 
-// 1. Create the contract
-//contract.symbol = "LLY";
-//contract.secType = "STK";
-//contract.exchange = "SMART";
-//contract.currency = "USD";
-
-  std::string order_action_str = {""};
-  switch(order_action_type){
-    case ORDER_ACTION_TYPE::BUY:{
-                            order_action_str =  std::string("BUY");
-
-                            break;
-                          }
-
-    case ORDER_ACTION_TYPE::SELL:{
-
-                               order_action_str =  std::string("SELL");
-
-                             break;
-
-                           }
-
-  }
-
-  std::string order_type_str = {""};
-  switch(order_type){
-    case ORDER_TYPES::LIMIT:{
-                            order_action_str =  std::string("LMT");
-
-                            break;
-                          }
-
-    case ORDER_TYPES::MARKET:{
-
-                               order_action_str =  std::string("MKT");
-
-                             break;
-
-                           }
-    case ORDER_TYPES::UNDEFINED_ORDER_TYPES:{
-
-                               order_action_str =  std::string("UNDEFINED_ORDER_TYPES");
-
-                             break;
-
-                           }
+  // 1. Create the contract
+  //contract.symbol = "LLY";
+  //contract.secType = "STK";
+  //contract.exchange = "SMART";
+  //contract.currency = "USD";
 
 
-  }
-  // 2. Create the order
+
+  //  std::string order_type_str = {""};
+  //  switch(order_type){
+  //    case ORDER_TYPES::LIMIT:{
+  //                            order_action_str =  std::string("LMT");
+  //
+  //                            break;
+  //                          }
+  //
+  //    case ORDER_TYPES::MARKET:{
+  //
+  //                               order_action_str =  std::string("MKT");
+  //
+  //                             break;
+  //
+  //                           }
+  //    case ORDER_TYPES::UNDEFINED_ORDER_TYPES:{
+  //
+  //                               order_action_str =  std::string("UNDEFINED_ORDER_TYPES");
+  //
+  //                             break;
+  //
+  //                           }
+  //
+  //
+  //  }
+  //  // 2. Create the order
   Order order;
-  order.action = order_action_str;
+  order.action = order_action_type_str;
   order.totalQuantity = total_quantity_input;
-  order.orderType = "LMT";
-  order.lmtPrice = 100.00;
+  order.orderType = order_type_input;
+  order.lmtPrice = limit_price;
   order.tif = "GCT"; // Time in force
 
-  std::cout << "placing order:"  << m_orderId << std::endl;
+
+  fmt::print(fg(fmt::color::red),"order details: {},{},{},{:0.2f}\n", order.action, symbol, order.totalQuantity, order.lmtPrice);
+
+  char user_confirmation;
+  std::cout << "are you sure you want to place this order?y/n:";
+  std::cin >> user_confirmation ;
+
+  if(user_confirmation == 'y') {
+    fmt::print(fg(fmt::color::orange),"you confirmed to place the order: {},{},{},{:0.2f}\n", order.action, symbol, order.totalQuantity, order.lmtPrice);
+
+    std::cout << "requesting IDS" << std::endl;
+
+    m_osSignal.waitForSignal(); // Waits for notification
+                                //    m_pReader->processMsgs();     // Processes messages
+
+    m_pClient->reqIds(0);
+    std::cout << "placing order with ID:"  << m_orderId << std::endl;
+    m_pClient->placeOrder(++m_orderId, contract, order);
+    fmt::print(bg(fmt::color::silver)|fg(fmt::color::green),"order just placed...good luck!\n");
+
+  }else {
+
+    fmt::print(bg(fmt::color::silver) | fg(fmt::color::pink),"NO order placed!\n");
+  }
   // 3. Place the order
-  int orderID= 10015;
-  std::cout << "order.totalQuantity:" << order.totalQuantity << std::endl;
 
-  m_pClient->placeOrder(++m_orderId, contract, order);
 
-  std::cout << "placed order" << std::endl;
 
 
 
@@ -259,7 +397,7 @@ void TestCppClient::placeOrder() {
   order.action = "BUY";
   order.totalQuantity = 100;
   order.orderType = "LMT";
-  order.lmtPrice = 100.00;
+  order.lmtPrice = 10.00;
   order.tif = "GCT"; // Time in force
 
   std::cout << "placing order:"  << m_orderId << std::endl;
@@ -527,9 +665,9 @@ void TestCppClient::processMessages()
       break;
   }
 
-  m_osSignal.waitForSignal();
+  // m_osSignal.waitForSignal();
   errno = 0;
-  m_pReader->processMsgs();
+  //  m_pReader->processMsgs();
 }
 
 //////////////////////////////////////////////////////////////////
@@ -1796,8 +1934,7 @@ void TestCppClient::tickDataOperationsProto()
 }
 
 //! [nextvalidid]
-void TestCppClient::nextValidId(int orderId)
-{
+void TestCppClient::nextValidId(int orderId) {
   printf("Next Valid Id: %d\n", orderId);
   m_orderId = orderId;
   //! [nextvalidid]
@@ -1852,8 +1989,7 @@ void TestCppClient::nextValidId(int orderId)
 }
 
 
-void TestCppClient::currentTime( long long time)
-{
+void TestCppClient::currentTime( long long time) {
   time_t t = (time_t)time;
   struct tm timeinfo;
   char currentTime[80];
@@ -1899,15 +2035,52 @@ void TestCppClient::error(int id, time_t errorTime, int errorCode, const std::st
 }
 //! [error]
 
-void TestCppClient::tickPrice(int reqId, TickType field, double price, const TickAttrib& attribs) {}
-void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {}
+void TestCppClient::tickPrice(int reqId, TickType field, double price, const TickAttrib& attribs) {
+
+  std::cout << "reqId:" << reqId << std::endl;
+  switch (field) {
+    case LAST:
+      std::cout << "Last Price: " << reqId << ": " << price << "\n";
+      break;
+    case BID:
+      std::cout << "Bid Price: " << price << "\n";
+      break;
+    case ASK:
+      std::cout << "Ask Price: " << price << "\n";
+      break;
+    default:
+      break;
+  }
+
+
+
+}
+void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {
+
+  std::cout << "reqId:" << reqId << std::endl;
+  std::cout << "field:" << field << " " << size << std::endl;
+
+}
 void TestCppClient::tickOptionComputation(int reqId, TickType tickType, int tickAttrib, double impliedVol, double delta, double optPrice, double pvDividend, double gamma, double vega, double theta, double undPrice) {}
-void TestCppClient::tickGeneric(int reqId, TickType tickType, double value) {}
+void TestCppClient::tickGeneric(int reqId, TickType tickType, double value) {
+
+  std::cout << "tick price trigger" << std::endl;
+}
 void TestCppClient::tickString(int reqId, TickType tickType, const std::string& value) {}
 void TestCppClient::tickEFP(int reqId, TickType tickType, double basisPoints, const std::string& formattedBasisPoints, double totalDividends, int holdDays, const std::string& futureLastTradeDate, double dividendImpact, double dividendsToLastTradeDate) {}
 void TestCppClient::orderStatus(int orderId, const std::string& status, Decimal filled, Decimal remaining, double avgFillPrice, long long permId, int parentId, double lastFillPrice, int clientId, const std::string& whyHeld, double mktCapPrice) {}
-void TestCppClient::openOrder(int orderId, const Contract& contract, const Order& order, const OrderState& orderState) {}
-void TestCppClient::openOrderEnd() {}
+void TestCppClient::openOrder(int orderId, const Contract& contract, const Order& order, const OrderState& orderState) {
+
+  //  std::cout << "here are the open orders:" << orderId << std::endl;
+
+  //printf("UpdatePortfolio. %s, %s @ %s: 
+  //Position: %s, MarketPrice: %s, MarketValue: %s, AverageCost: %s, UnrealizedPNL: %s, RealizedPNL: %s, AccountName: %s\n",
+
+}
+void TestCppClient::openOrderEnd() {
+  std::cerr << "open order ends" << std::endl;
+
+}
 
 void TestCppClient::winError( const std::string& str, int lastError) {}
 void TestCppClient::connectionClosed() {
@@ -1917,7 +2090,247 @@ void TestCppClient::connectionClosed() {
 //! [updateaccountvalue]
 void TestCppClient::updateAccountValue(const std::string& key, const std::string& val,
     const std::string& currency, const std::string& accountName) {
-  printf("UpdateAccountValue. Key: %s, Value: %s, Currency: %s, Account Name: %s\n", key.c_str(), val.c_str(), currency.c_str(), accountName.c_str());
+  // printf("UpdateAccountValue. Key: %s, Value: %s, Currency: %s, Account Name: %s\n", key.c_str(), val.c_str(), currency.c_str(), accountName.c_str());
+
+
+  if (key.contains( "EquityWithLoanValue")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.EquityWithLoanValue_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "NetLiquidation")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.NetLiquidation_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+
+  if (key.contains( "BuyingPower")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.BuyingPower_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "GrossPositionValue")) {
+    // val contains the maximum dollar value of securities you can buy
+    //   current_account_state_.GrossPositionValue_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "InitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.InitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "MaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.MaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "AvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.AvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "ExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.ExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "LookAheadInitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadInitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "LookAheadMaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadMaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "LookAheadAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "LookAheadExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullInitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullInitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "FullAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "Cushion")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.Cushion_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "EquityWithLoanValue")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.EquityWithLoanValue_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "NetLiquidation")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.NetLiquidation_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "BuyingPower")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.BuyingPower_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "GrossPositionValue")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.GrossPositionValue_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+  if (key.contains( "InitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.InitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "MaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.MaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "AvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.AvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+  if (key.contains( "MaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.MaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+  if (key.contains( "ExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.ExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+  if (key.contains( "LookAheadInitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadInitMarginReq+ = std::stod(val);
+    // Do something with buyingpower
+  }
+  if (key.contains( "LookAheadMaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadMaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "LookAheadAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower_
+  }
+
+  if (key.contains( "LookAheadExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }if (key.contains( "FullInitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullInitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }if (key.contains( "LookAheadAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }if (key.contains( "FullMaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullMaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }if (key.contains( "LookAheadAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "LookAheadExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.LookAheadExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullInitMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullInitMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullMaintMarginReq")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullMaintMarginReq_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullAvailableFunds")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullAvailableFunds_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+  if (key.contains( "FullExcessLiquidity")) {
+    // val contains the maximum dollar value of securities you can buy
+    //    current_account_state_.FullExcessLiquidity_ = std::stod(val);
+    // Do something with buyingpower
+  }
+  if (key.contains("SMA")) {
+    // val contains the maximum dollar value of securities you can buy
+    current_account_state_.SMA_ = std::stod(val);
+    // Do something with buyingpower
+  }
+
+
+
+
+
+
 }
 //! [updateaccountvalue]
 
@@ -1925,22 +2338,24 @@ void TestCppClient::updateAccountValue(const std::string& key, const std::string
 void TestCppClient::updatePortfolio(const Contract& contract, Decimal position,
     double marketPrice, double marketValue, double averageCost,
     double unrealizedPNL, double realizedPNL, const std::string& accountName){
-  printf("UpdatePortfolio. %s, %s @ %s: Position: %s, MarketPrice: %s, MarketValue: %s, AverageCost: %s, UnrealizedPNL: %s, RealizedPNL: %s, AccountName: %s\n",
-      (contract.symbol).c_str(), (contract.secType).c_str(), (contract.exchange).c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(),
-      Utils::doubleMaxString(marketPrice).c_str(), Utils::doubleMaxString(marketValue).c_str(), Utils::doubleMaxString(averageCost).c_str(),
-      Utils::doubleMaxString(unrealizedPNL).c_str(), Utils::doubleMaxString(realizedPNL).c_str(), accountName.c_str());
+  //printf("UpdatePortfolio. %s, %s @ %s: Position: %s, MarketPrice: %s, MarketValue: %s, AverageCost: %s, UnrealizedPNL: %s, RealizedPNL: %s, AccountName: %s\n",
+  //    (contract.symbol).c_str(), (contract.secType).c_str(), (contract.exchange).c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(),
+  //    Utils::doubleMaxString(marketPrice).c_str(), Utils::doubleMaxString(marketValue).c_str(), Utils::doubleMaxString(averageCost).c_str(),
+  //    Utils::doubleMaxString(unrealizedPNL).c_str(), Utils::doubleMaxString(realizedPNL).c_str(), accountName.c_str());
 }
 //! [updateportfolio]
 
 //! [updateaccounttime]
 void TestCppClient::updateAccountTime(const std::string& timeStamp) {
-  printf( "UpdateAccountTime. Time: %s\n", timeStamp.c_str());
+  // printf( "UpdateAccountTime. Time: %s\n", timeStamp.c_str());
 }
 //! [updateaccounttime]
 
 //! [accountdownloadend]
 void TestCppClient::accountDownloadEnd(const std::string& accountName) {
   printf( "Account download finished: %s\n", accountName.c_str());
+
+  //request_mutex_.unlock();
 }
 //! [accountdownloadend]
 
@@ -2158,6 +2573,10 @@ void TestCppClient::updateNewsBulletin(int msgId, int msgType, const std::string
 
 //! [managedaccounts]
 void TestCppClient::managedAccounts( const std::string& accountsList) {
+
+
+  // managed_accounts_str_ = accountsList;
+
   printf( "Account List: %s\n", accountsList.c_str());
 }
 //! [managedaccounts]
@@ -2221,7 +2640,38 @@ void TestCppClient::deltaNeutralValidation(int reqId, const DeltaNeutralContract
   printf( "DeltaNeutralValidation. %d, ConId: %d, Delta: %s, Price: %s\n", reqId, deltaNeutralContract.conId, Utils::doubleMaxString(deltaNeutralContract.delta).c_str(), Utils::doubleMaxString(deltaNeutralContract.price).c_str());
 }
 
-void TestCppClient::tickSnapshotEnd(int reqId) {}
+void TestCppClient::tickSnapshotEnd(int reqId) {
+
+  std::cout << "tick snapshot ends of reqId:" << reqId << std::endl;
+
+  if(std::get<0>(price_request_counter_).contains(reqId)) {
+    std::cout << "reqId:" << reqId << " belongs to search space" << std::endl;
+    std::get<0>(std::get<1>( std::get<1>(price_request_counter_)))++;
+    std::get<1>(std::get<1>( std::get<1>(price_request_counter_)))++;
+
+    const auto& counter_value = std::get<0>( std::get<1>(price_request_counter_));
+
+    if(std::get<0>(std::get<1>( std::get<1>(price_request_counter_))) == counter_value) {
+      std::cout << "price request counter are finished" << std::endl;
+
+      std::cout << "counter value:" << counter_value << std::endl;
+
+    }
+
+  }else {
+
+    std::cout << "reqId:" << reqId << " DOES NOT belong to search space" << std::endl;
+    for(const auto& it:std::get<0>(price_request_counter_)) {
+      std::cout << it << " ";
+    }
+    std::cout << std::endl;
+  }
+
+
+  //     std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
+
+
+}
 
 //! [marketdatatype]
 void TestCppClient::marketDataType(int reqId, int marketDataType) {
@@ -2235,15 +2685,222 @@ void TestCppClient::commissionAndFeesReport( const CommissionAndFeesReport& comm
 }
 //! [commissionandfeesreport]
 
+void TestCppClient::print_position_details() {
+
+  m_pClient->reqPositions();
+  //  m_pClient->reqOpenOrders();
+
+
+
+  // m_pClient->reqAccountUpdates(false, ""); 
+
+  // print_position_details();
+
+
+
+
+
+
+  std::lock_guard<std::mutex> guard(request_mutex_); 
+  std::set<std::string> long_positions;
+  std::set<std::string> short_positions;
+  std::set<std::string> open_positions;
+  std::set<std::string> open_filled_positions;
+
+  current_account_state_.print();
+
+
+  if(position_details_.size() > 0) {
+
+
+    //    std::map<int, std::map<std::set<int>, std::atomic<int> > > price_request_counter;
+
+
+
+    //    std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
+
+
+    std::get<0>(std::get<1>(price_request_counter_)) = position_details_.size();
+
+    std::get<0>(std::get<1>(std::get<1>(price_request_counter_))) = 0;
+    std::get<1>(std::get<1>(std::get<1>(price_request_counter_))) = 0;
+
+    // get the prices
+    for(const auto& position:position_details_) {
+      const auto& ticker = position.first;
+      int counter = m_orderId++;
+      std::get<0>(price_request_counter_).insert(counter);
+
+    }
+
+
+
+
+    float total_VaR = {0.0}; // value at risk! 
+    int request_counter = {0};
+    for(const auto& position:position_details_) {
+
+      const auto& ticker = position.first;
+
+      if(position.second.num_positions_ > 0) {
+        long_positions.insert(ticker);
+
+      }else {
+        short_positions.insert(ticker);
+      }
+
+      total_VaR += ::fabs(position.second.num_positions_ * position.second.average_cost_);
+    }
+
+    std::cout << "############################################################"<< std::endl;
+    //
+    //    fmt::print(fg(fmt::color::violet), "Positions:\n");
+
+    // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
+    if(short_positions.size() > 0){
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "SHORTS:\n");
+
+      for(const auto& position:short_positions) {
+
+
+
+        const std::string& symbol = position;
+        const auto position_float = position_details_[symbol].num_positions_ ;
+        const auto average_cost_float = position_details_[symbol].average_cost_;
+        auto total_position_cost = position_float*average_cost_float;
+
+        Contract contract;
+        contract.symbol = symbol;
+        contract.secType = "STK";
+        contract.exchange = "SMART";
+        contract.currency = "USD";
+
+
+        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        const int tickerId = *it;
+
+        // Request market data. The last two arguments are for regulatory snapshots and API generic tags.
+        // Setting snapshot to false gives a continuous live stream.
+
+        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+
+
+
+
+        if(::fabs(position_float) > 0) {
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float, total_position_cost); 
+        }
+      }
+
+    }
+
+    if(long_positions.size() > 0){
+      fmt::print(fg(fmt::color::green) | bg(fmt::color::black), "LONGS:\n");
+
+      //  float num_positions_;
+      //  float average_cost_;
+      //
+      for(const auto& position:long_positions) {
+        const std::string& symbol = position;
+        const auto position_float = position_details_[symbol].num_positions_ ;
+        const auto average_cost_float = position_details_[symbol].average_cost_;
+        auto total_position_cost = position_float*average_cost_float;
+
+        Contract contract;
+        contract.symbol = symbol;
+        contract.secType = "STK";
+        contract.exchange = "SMART";
+        contract.currency = "USD";
+
+
+
+
+        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        const int tickerId = *it;
+
+        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+
+
+        if(position_float > 0){
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+        }
+      }
+    }
+  }else {
+    fmt::print(fg(fmt::color::red),"SORRY THERE IS NO AVAILABLE POSIITON TO PRINT\n");
+  }
+
+  //  std::cout << std::endl;
+  //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
+  //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
+
+  getchar();
+
+}
 //! [position]
 void TestCppClient::position( const std::string& account, const Contract& contract, Decimal position, double avgCost) {
-  printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
+
+  //std::cout << "getting positions:" << std::endl;
+  //printf("%f\n",position);
+
+  std::string position_str = DecimalFunctions::decimalStringToDisplay(position);
+
+  //  std::cout << "position_str:" << position_str << std::endl;
+
+  std::string symbol =  contract.symbol;
+  //   std::cout << "symbol:" << symbol << std::endl;
+  //   std::cout << "symbol size:" << symbol.size() << std::endl;
+  if(!symbol.empty()) {
+    std::string average_cost_str = Utils::doubleMaxString(avgCost);
+    float position_float = ::atof(position_str.c_str());
+    float average_cost_float = ::atof(average_cost_str.c_str());
+    float total_position_cost = position_float*average_cost_float;
+
+    // contract.size;
+
+    position_details_[symbol].num_positions_ = position_float;
+    position_details_[symbol].average_cost_ = average_cost_float;
+
+
+
+    //    if(!print_once_positions_) {
+    //      fmt::print(fg(fmt::color::violet)|bg(fmt::color::black), "Positions:\n");
+    //      print_once_positions_ = !print_once_positions_default_;
+    //    }
+    //
+    // fmt::print(bg(fmt::color::black),"{}","");
+
+    //     if(::fabs(position_float) > 0) {
+    //       // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
+    //       if(position_float < 0){
+    //   //      if(!print_once_positions_)
+    //   //        fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tSHORTS:\n");
+    //
+    //         fmt::print(fg(fmt::color::orange) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+    //       }else {
+    //         //if(!print_once_positions_)
+    //         //  fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tLONGS:\n");
+    //         fmt::print(fg(fmt::color::olive) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+    //       }
+    //     }
+    //
+
+
+  }
+
 }
 //! [position]
 
 //! [positionend]
 void TestCppClient::positionEnd() {
-  printf( "PositionEnd\n");
+  request_mutex_.unlock();
+  auto now = std::chrono::system_clock::now();
+  auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
+  std::cout << std::format("Local Time: {:%F %T}\n", local_time);
+  std::cout << "############################################################"<< std::endl;
+
+  //  print_once_positions_ = !print_once_positions_default_;
+  //  std::cout << "position End" << std::endl;
 }
 //! [positionend]
 
@@ -2818,7 +3475,11 @@ void TestCppClient::ctor_helpers() {
   contract_template.exchange = {"SMART"};
   contract_template.primaryExchange = {"NASDAQ"};
 
+  print_once_positions_ = print_once_positions_default_;
 
+  account_value_ = account_value_default_;
+
+  buying_power_ = buying_power_default_;
 }
 
 

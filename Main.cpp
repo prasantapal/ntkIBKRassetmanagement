@@ -19,62 +19,51 @@
 #include "vanilla_header.hpp"
 #include "tmux_management.hpp"
 #include "market_data.hpp"
-
 const unsigned MAX_ATTEMPTS = 50;
 const unsigned SLEEP_TIME = 10;
-
+const unsigned SLEEP_TIME_WATCH = 5000;
 
 /* IMPORTANT: always use your paper trading account. The code below will submit orders as part of the demonstration. */
 /* IB will not be responsible for accidental executions on your live account. */
 /* Any stock or option symbols displayed are for illustrative purposes only and are not intended to portray a recommendation. */
 /* Before contacting our API support team please refer to the available documentation. */
 int main(int argc, char** argv) {
-
-
-TmuxManagement tmux_management;
-
-std::string msg = "SENDIGN MSG!";
-tmux_management.send_msg_to_last_ttys(std::move(msg));
-
-
-
-
+  std::ios_base::sync_with_stdio(true);
+  setlocale(LC_NUMERIC, "");
+  TmuxManagement tmux_management;
+  //  std::string msg = "SENDIGN MSG!";
+  //  tmux_management.send_msg_to_last_ttys(std::move(msg));
   MarketData market_data;
+  /// LOAD DATA
 
   int asset_category = ASSET_CATAGORIES::ETFS_ALL;
-
   std::vector<std::string> assets =  market_data.get_asset_list(asset_category);
   fmt::print(fg(fmt::color::green), "{}\n",assets);
   srand(static_cast<unsigned int>(time(NULL)));
-
   int random_etf_index = rand()%assets.size();
+  std::string random_etf = assets.at(random_etf_index);
+  //  .................................................................
   asset_category = ASSET_CATAGORIES::STOCKS_ALL;
   assets =  market_data.get_asset_list(asset_category);
-  std::string random_etf = assets.at(random_etf_index);
-
-
   srand(static_cast<unsigned int>(time(NULL)));
-
   int random_stock_index = rand()%assets.size();
   std::string random_stock = assets.at(random_stock_index);
   fmt::print(fg(fmt::color::purple), "{}\n",assets);
 
-  std::transform(random_etf.begin(), random_etf.end(), random_etf.begin(), [](unsigned char c) {
-      return std::toupper(c);
-      });
-
-
-
-  std::transform(random_stock.begin(), random_stock.end(), random_stock.begin(), [](unsigned char c) {
-      return std::toupper(c);
-      });
-
-
-
-  fmt::print(fg(fmt::color::red),"{}\n",random_etf);
-
-  fmt::print(fg(fmt::color::red),"{}\n",random_stock);
-
+  //  std::transform(random_etf.begin(), random_etf.end(), random_etf_upper.begin(), [](unsigned char c) {
+  //      return std::toupper(c);
+  //      });
+  //
+  //  std::transform(random_stock.begin(), random_stock.end(), random_stock_upper.begin(), [](unsigned char c) {
+  //      return std::toupper(c);
+  //      });
+  //
+  //
+  //
+  //  fmt::print(fg(fmt::color::red),"{}\n",random_etf);
+  //
+  //  fmt::print(fg(fmt::color::red),"{}\n",random_stock);
+  //
 
   // 1. Fetch the environment variable by name
   const char* env_p = std::getenv("NEUTHEOS_TRADE_DATA_HOME");
@@ -84,8 +73,8 @@ tmux_management.send_msg_to_last_ttys(std::move(msg));
     std::cout << "Your PATH is: " << env_p << std::endl;
   } else {
     std::cout << "The requested environment variable does not exist." << std::endl;
+    return 0;
   }
-
 
 
 
@@ -123,7 +112,7 @@ tmux_management.send_msg_to_last_ttys(std::move(msg));
   Contract contract;
   contract.symbol = "AAPL";
   contract.secType = "STK";
-  contract.exchange = "SMART";
+  //  contract.exchange = "SMART";
   contract.currency = "USD";
 
   Order order;
@@ -162,122 +151,24 @@ tmux_management.send_msg_to_last_ttys(std::move(msg));
     std::cout << "doing my fav thing...napping for " <<  napping_time << " secs before starting work!"<< std::endl;
 
     std::this_thread::sleep_for(std::chrono::seconds(napping_time));
-    std::cout << "done doing my fav thing...napping for " << napping_time << " secs" << std::endl;
+    std::cout << "napping for " << napping_time << " secs" << std::endl;
     while( client.isConnected()) {
 
-      //   std::cout << "order.account:" << order.account << std::endl;
+      client.print_position_details();
 
-      //    std::cout << "historical data requests" << std::endl;
-      //     client.historicalDataRequests();
-      //
-      //    std::cout << "processing messages:" << std::endl;
-      //
-      //    client.processMessages();
-      //    std::cout << "performing  order Operations:" << std::endl;
-      //
-      //    client.accountOperations();
+      //     std::string asset = {"SOXS"};
+      //     auto price = client.get_ticker_price(asset);
 
-      //      client.getPositions();
-      //client.reqAccn
-      std::cout << "would you like to place order?y/n:";
-      char c = getchar();
-      if(c == 'y') {
+      //     std::cout << "ticker price of " << asset << " is " << price << std::endl;
+      //         //    std::cout << "performing order Operations:" << std::endl;
+      //     //    client.orderOperations();
+      //     //    std::cout << "done performing order Operations:" << std::endl;
+      //     //    std::cout << "done performing orderOperations:" << std::endl;
+      //     //
+      //     //  //  client.getPositions();
+      //     //  //  std::cout << "done getPositions:" << std::endl;
 
-        
-
-        std::cout << "ticker:";
-        std::string ticker;
-        std::cin >> ticker;
-        std::cout << "ticker-" << ticker << std::endl;
-
-        std::cout << "buy/sell? b/s:";
-        char c;
-        std::cin >> c;
-        int order_action_type = ORDER_ACTION_TYPE::UNDEFINED_ORDER_ACTION;
-
-        if(c== 'b') {
-
-          order_action_type = ORDER_ACTION_TYPE::BUY;
-        }else if (c == 's'){
-
-          order_action_type = ORDER_ACTION_TYPE::SELL;
-        }else {
-        }
-
-
-
-
-
-
-
-        int quantity = 0;
-        std::cout << "quantity:"; 
-        std::cin >> quantity;
-        std::cout << "quantity-" << quantity << std::endl;
-
-        double limit_price = {0};
-        std::cout << "limit_price:";
-        std::cin >> limit_price;
-        std::cout << "limit_price-" << limit_price << std::endl;
-
-        std::string order_type_str = {""};
-        switch(order_action_type){
-          case ORDER_ACTION_TYPE::BUY:{
-                                  order_type_str =  std::string("BUY");
-
-                                  break;
-                                }
-
-          case ORDER_ACTION_TYPE::SELL:{
-
-                                   order_type_str =  std::string("SELL");
-
-                                   break;
-
-                                 }
-
-        }
-
-        int order_type = ORDER_TYPES::UNDEFINED_ORDER_TYPES;
-
-
-        client.placeOrderCustom(order_type, ticker, limit_price, quantity, order_type);
-
-        fmt::print( fg(fmt::color::red),"placing {:>10} order:{} QTY:{} LMT:{}\n",order_type_str, ticker,limit_price,quantity);
-
-        std::cout << "are you ready to place the order?y/n:";
-        char answer = 'n';
-        std::cin >> answer;
-
-        if(answer == 'y') {
-
-          fmt::print(fg(fmt::color::orange),"placing order..");
-
-        }else if(answer == 'n') {
-
-          std::cout << "not placing order" << std::endl;
-        }else {
-          std::cout << "not placing order" << std::endl;
-        }
-
-
-        //        client.placeOrder();
-        std::cout << "done placing order" << std::endl;
-      }else {
-
-        std::cout << "didn't place order" << std::endl;
-      }
-
-      //    std::cout << "performing order Operations:" << std::endl;
-      //    client.orderOperations();
-      //    std::cout << "done performing order Operations:" << std::endl;
-      //    std::cout << "done performing orderOperations:" << std::endl;
-      //
-      //  //  client.getPositions();
-      //  //  std::cout << "done getPositions:" << std::endl;
-      std::cout << "taking a nap...press enter to wake up" << std::endl;
-      getchar();
-
+      std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_TIME_WATCH));
     }
     if( attempt >= MAX_ATTEMPTS) {
       break;
