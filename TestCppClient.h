@@ -42,41 +42,41 @@ struct PositionDetails {
 
 
 struct CurrentAccountState {
-    CurrentAccountState();
-    ~CurrentAccountState();
+  CurrentAccountState();
+  ~CurrentAccountState();
 
-    void ctor_helpers();
-    void dtor_helpers();
-    ///////////////////
-    float SMA_;
-    static float constexpr SMA_default_ = {0.0};
+  void ctor_helpers();
+  void dtor_helpers();
+  ///////////////////
+  float SMA_;
+  static float constexpr SMA_default_ = {0.0};
 
-    float buying_power_;
-    static float constexpr buying_power_default_ = {0.0};
+  float buying_power_;
+  static float constexpr buying_power_default_ = {0.0};
 
-static float FullInitMarginReq_;
-static float FullMaintMarginReq_;
-static float FullAvailableFunds_;
-static float FullExcessLiquidity_;
-static float Cushion_;
-static float EquityWithLoanValue_;
-static float NetLiquidation_;
-static float BuyingPower_;
-static float GrossPositionValue_;
-static float InitMarginReq_;
-static float MaintMarginReq_;
-static float AvailableFunds_;
-static float ExcessLiquidity_;
-static float LookAheadInitMarginReq_;
-static float LookAheadMaintMarginReq_;
-static float LookAheadAvailableFunds_;
-static float LookAheadExcessLiquidity_;
-
-
+  static float FullInitMarginReq_;
+  static float FullMaintMarginReq_;
+  static float FullAvailableFunds_;
+  static float FullExcessLiquidity_;
+  static float Cushion_;
+  static float EquityWithLoanValue_;
+  static float NetLiquidation_;
+  static float BuyingPower_;
+  static float GrossPositionValue_;
+  static float InitMarginReq_;
+  static float MaintMarginReq_;
+  static float AvailableFunds_;
+  static float ExcessLiquidity_;
+  static float LookAheadInitMarginReq_;
+  static float LookAheadMaintMarginReq_;
+  static float LookAheadAvailableFunds_;
+  static float LookAheadExcessLiquidity_;
 
 
 
-void print() const;
+
+
+  void print() const;
 };
 
 
@@ -305,7 +305,7 @@ class TestCppClient : public EWrapper
 
     std::unique_ptr<std::jthread> reader_thread;
     bool print_once_positions_;
-   std::mutex account_update_mutex_;
+    std::mutex account_update_mutex_;
 
     std::mutex request_mutex_;
     static bool constexpr print_once_positions_default_ = {false};
@@ -317,11 +317,11 @@ class TestCppClient : public EWrapper
 
     double buying_power_;
     static double constexpr buying_power_default_  = {0.0};
-CurrentAccountState current_account_state_;
+    CurrentAccountState current_account_state_;
 
-//    std::tuple<std::set<int>, std::tuple<int,std::atomic<int>> >  price_request_counter_;
+    //    std::tuple<std::set<int>, std::tuple<int,std::atomic<int>> >  price_request_counter_;
 
-     std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
+    std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
 
 };
 
