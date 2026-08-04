@@ -33,6 +33,13 @@
 
 class EClientSocket;
 
+
+struct AssetPrice {
+float last_price_;
+float bid_price_;
+float ask_price_;
+};
+
 struct PositionDetails {
 
   float num_positions_;
@@ -273,8 +280,6 @@ class TestCppClient : public EWrapper
     void printBondContractDetailsMsg(const ContractDetails& contractDetails);
     void printContractDetailsIneligibilityReasonList(const IneligibilityReasonListSPtr &ineligibilityReasonList);
     void printSoftDollarTier(const SoftDollarTier& softDollarTier);
-
-
     //void TestCppClient::placeOrder(std::string symbol, double limit_price, int quantity) {
 
     // 1. Define the Contract (e.g., AAPL Stock)
@@ -319,12 +324,36 @@ class TestCppClient : public EWrapper
     static double constexpr buying_power_default_  = {0.0};
     CurrentAccountState current_account_state_;
 
-    //    std::tuple<std::set<int>, std::tuple<int,std::atomic<int>> >  price_request_counter_;
 
-    std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
+    /////////////////////////////////////////////////////////////////////
+    static std::map<int, AssetPrice> current_price_list_;
+
+    static std::condition_variable req_position_end_cond_var_;
+    static bool req_position_end_cond_var_trigger_;
+    static bool constexpr req_position_end_cond_var_trigger_default_ = {false};
+    static std::mutex req_position_end_mtx_;
+
+
+    static std::condition_variable req_position_price_end_cond_var_;
+    static bool req_position_price_end_cond_var_trigger_;
+    static bool constexpr req_position_price_end_cond_var_trigger_default_ = {false};
+    static std::mutex req_position_price_end_mtx_;
+
+
+
+
+
+
+
+
+
+
+
+    //    std::tuple<std::map<int,std::string>, std::tuple<int,std::atomic<int>> >  price_request_counter_;
+    // ID, price, volume
+    std::tuple<std::map<int,std::string>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
 
 };
-
 
 
 #endif

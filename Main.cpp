@@ -1,4 +1,6 @@
 #define FMT_HEADER_ONLY
+#include <iostream>
+
 #include <fmt/core.h>
 #include <fmt/color.h>
 #include <fmt/ranges.h>
@@ -22,11 +24,14 @@
 const unsigned MAX_ATTEMPTS = 50;
 const unsigned SLEEP_TIME = 10;
 const unsigned SLEEP_TIME_WATCH = 5000;
+#define TESTING_MODE
+#undef TESTING_MODE
 
 /* IMPORTANT: always use your paper trading account. The code below will submit orders as part of the demonstration. */
 /* IB will not be responsible for accidental executions on your live account. */
 /* Any stock or option symbols displayed are for illustrative purposes only and are not intended to portray a recommendation. */
 /* Before contacting our API support team please refer to the available documentation. */
+#ifndef TESTING_MODE
 int main(int argc, char** argv) {
   std::ios_base::sync_with_stdio(true);
   setlocale(LC_NUMERIC, "");
@@ -83,7 +88,7 @@ int main(int argc, char** argv) {
   options.allow_unrecognised_options();
   options.add_options()
     ("d,debug", "Enable debugging") // a bool parameter
-    ("c,clientID", "write code", cxxopts::value<int>()->default_value("0"))
+    ("c,clientID", "client id", cxxopts::value<int>()->default_value("0"))
     ("v,verbose", "Verbose output", cxxopts::value<bool>()->default_value("false"))
     ;
 
@@ -102,7 +107,7 @@ int main(int argc, char** argv) {
   int IBKR_GATEWAY_PORT = {4002};
   //if (port <= 0)
   port = IBKR_GATEWAY_PORT;
-  const char* connectOptions = "+PACEAPI";
+  const char* connectOptions = {"+PACEAPI"};
   // const char* connectOptions = argc > 3 ? argv[3] : "+PACEAPI";
 
   unsigned attempt = 0;
@@ -154,7 +159,8 @@ int main(int argc, char** argv) {
     std::cout << "napping for " << napping_time << " secs" << std::endl;
     while( client.isConnected()) {
 
-      client.print_position_details();
+        client.print_position_details();
+        getchar();
 
       //     std::string asset = {"SOXS"};
       //     auto price = client.get_ticker_price(asset);
@@ -180,6 +186,12 @@ int main(int argc, char** argv) {
 
   printf ( "End of C++ Socket Client Test\n");
 }
+#else
+int main(int argc, char** argv) {
 
+  std::cout << "Hello world of TESTING ZONE!" << std::endl;
+  return 0;
+}
+#endif
 
 

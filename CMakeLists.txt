@@ -4,10 +4,10 @@ project(NTK)
 set(HOME "$ENV{HOME}")
 set(PROTOBUF_PATH "softwares/lib/protobuf/src")
 message("Home" ${HOME})
-set (CC gcc-15)
-set (CXX g++-15)
+set (CC gcc-16)
+set (CXX g++-16)
 
-set(CMAKE_CXX_FLAGS "  -Wuninitialized -Wno-psabi -O3 -fsigned-char   -ansi -Wall -Wextra -Weffc++ -fopenmp -fconcepts")
+set(CMAKE_CXX_FLAGS " -Wuninitialized -Wno-psabi -O3 -fsigned-char  -ansi -Wall -Wextra -Weffc++ -fopenmp -fconcepts")
 
 
 #set whether or not OpenCV is included
@@ -56,7 +56,7 @@ set_target_properties(TestCppClient
 if( MSVC )
   target_compile_options( TestCppClient PRIVATE /W3 )
 else()
-  target_compile_options( TestCppClient PRIVATE -std=c++23 -Wall -Wextra -pedantic -Wno-unused-parameter )
+  target_compile_options( TestCppClient PRIVATE -Wall -Wextra -pedantic -Wno-unused-parameter )
 endif()
 
 install(TARGETS TestCppClient DESTINATION bin)

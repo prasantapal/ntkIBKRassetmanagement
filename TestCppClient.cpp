@@ -11,8 +11,6 @@
 #include "EClientSocket.h"
 #include "EPosixClientSocketPlatform.h"
 
-
-
 #include "Contract.h"
 #include "Order.h"
 #include "Execution.h"
@@ -148,13 +146,9 @@ double TestCppClient::get_ticker_price(std::string ticker) {
   //  //m_osSignal.waitForSignal();
   //
 
-  request_mutex_.lock();
-  m_pClient->reqPositions();
-
-  //m_pClient->reqAccountUpdates(true, ""); 
-
   print_position_details();
 
+  getchar();
   //  ExecutionFilter executionFilter1;
   //  executionFilter1.m_lastNDays = 1;
   //  m_pClient->reqExecutions(m_orderId++, executionFilter1);
@@ -2032,24 +2026,34 @@ void TestCppClient::error(int id, time_t errorTime, int errorCode, const std::st
   } else {
     printf("Error. Id: %d, Time: %s, Code: %d, Msg: %s\n", id, errorTimeStr, errorCode, errorString.c_str());
   }
+
+
 }
 //! [error]
 
 void TestCppClient::tickPrice(int reqId, TickType field, double price, const TickAttrib& attribs) {
 
-  std::cout << "reqId:" << reqId << std::endl;
+  // std::cout << "reqId:" << reqId << std::endl;
   switch (field) {
-    case LAST:
-      std::cout << "Last Price: " << reqId << ": " << price << "\n";
-      break;
-    case BID:
-      std::cout << "Bid Price: " << price << "\n";
-      break;
-    case ASK:
-      std::cout << "Ask Price: " << price << "\n";
-      break;
+    case LAST: {
+                 // std::cout << "Last Price: " << reqId << ": " << price << "\n";
+                 current_price_list_[reqId].last_price_ = price;
+               }
+               break;
+    case BID: {
+                // std::cout << "Bid Price: " << price << "\n";
+                current_price_list_[reqId].bid_price_ = price;
+              }
+              break;
+    case ASK: {
+
+                // std::cout << "Ask Price: " << price << "\n";
+                current_price_list_[reqId].ask_price_ = price;
+
+              }
+              break;
     default:
-      break;
+              break;
   }
 
 
@@ -2057,14 +2061,14 @@ void TestCppClient::tickPrice(int reqId, TickType field, double price, const Tic
 }
 void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {
 
-  std::cout << "reqId:" << reqId << std::endl;
-  std::cout << "field:" << field << " " << size << std::endl;
+   //std::cout << "reqId:" << reqId << std::endl;
+   //std::cout << "reqId:" << reqId << " field:" << field << " " << size << std::endl;
 
 }
 void TestCppClient::tickOptionComputation(int reqId, TickType tickType, int tickAttrib, double impliedVol, double delta, double optPrice, double pvDividend, double gamma, double vega, double theta, double undPrice) {}
 void TestCppClient::tickGeneric(int reqId, TickType tickType, double value) {
 
-  std::cout << "tick price trigger" << std::endl;
+//  std::cout << "tick price trigger" << std::endl;
 }
 void TestCppClient::tickString(int reqId, TickType tickType, const std::string& value) {}
 void TestCppClient::tickEFP(int reqId, TickType tickType, double basisPoints, const std::string& formattedBasisPoints, double totalDividends, int holdDays, const std::string& futureLastTradeDate, double dividendImpact, double dividendsToLastTradeDate) {}
@@ -2642,27 +2646,30 @@ void TestCppClient::deltaNeutralValidation(int reqId, const DeltaNeutralContract
 
 void TestCppClient::tickSnapshotEnd(int reqId) {
 
-  std::cout << "tick snapshot ends of reqId:" << reqId << std::endl;
+//  std::cout << "tick snapshot ends of reqId:" << reqId << std::endl;
 
   if(std::get<0>(price_request_counter_).contains(reqId)) {
-    std::cout << "reqId:" << reqId << " belongs to search space" << std::endl;
+//    std::cout << "reqId:" << reqId << " belongs to search space" << std::endl;
     std::get<0>(std::get<1>( std::get<1>(price_request_counter_)))++;
     std::get<1>(std::get<1>( std::get<1>(price_request_counter_)))++;
 
     const auto& counter_value = std::get<0>( std::get<1>(price_request_counter_));
 
     if(std::get<0>(std::get<1>( std::get<1>(price_request_counter_))) == counter_value) {
-      std::cout << "price request counter are finished" << std::endl;
+ //     std::cout << "price request counter are finished" << std::endl;
 
-      std::cout << "counter value:" << counter_value << std::endl;
+  //    std::cout << "counter value:" << counter_value << std::endl;
+      req_position_price_end_cond_var_trigger_ = true;
+      req_position_price_end_cond_var_.notify_one();
+   //   std::cout << "Price request done!" << counter_value << std::endl;
 
     }
 
   }else {
 
-    std::cout << "reqId:" << reqId << " DOES NOT belong to search space" << std::endl;
+//    std::cout << "reqId:" << reqId << " DOES NOT belong to search space" << std::endl;
     for(const auto& it:std::get<0>(price_request_counter_)) {
-      std::cout << it << " ";
+      std::cout << it.first << " " << it.second << std::endl;
     }
     std::cout << std::endl;
   }
@@ -2675,7 +2682,7 @@ void TestCppClient::tickSnapshotEnd(int reqId) {
 
 //! [marketdatatype]
 void TestCppClient::marketDataType(int reqId, int marketDataType) {
-  printf( "MarketDataType. ReqId: %d, Type: %d\n", reqId, marketDataType);
+//  printf( "MarketDataType. ReqId: %d, Type: %d\n", reqId, marketDataType);
 }
 //! [marketdatatype]
 
@@ -2687,7 +2694,33 @@ void TestCppClient::commissionAndFeesReport( const CommissionAndFeesReport& comm
 
 void TestCppClient::print_position_details() {
 
+  std::unique_lock<std::mutex> lock(req_position_end_mtx_);
+  //request_mutex_.lock();
+
+//  std::cout << "making request" << std::endl;
   m_pClient->reqPositions();
+
+ // std::cout << "waiting..." << std::endl;
+
+
+  // 1. Acquire the lock using std::unique_lock
+  //
+  // req_position_end_cond_var_.notify_one();
+
+  // 2. Wait until the predicate condition evaluates to true
+  req_position_end_cond_var_.wait(lock, [] { return req_position_end_cond_var_trigger_; });
+
+  req_position_end_cond_var_trigger_ = req_position_end_cond_var_trigger_default_;
+
+//  fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position request ends!");
+
+
+
+
+  //m_pClient->reqAccountUpdates(true, ""); 
+
+  // fmt::print("{}","Printing position details!");
+
   //  m_pClient->reqOpenOrders();
 
 
@@ -2701,7 +2734,6 @@ void TestCppClient::print_position_details() {
 
 
 
-  std::lock_guard<std::mutex> guard(request_mutex_); 
   std::set<std::string> long_positions;
   std::set<std::string> short_positions;
   std::set<std::string> open_positions;
@@ -2709,30 +2741,87 @@ void TestCppClient::print_position_details() {
 
   current_account_state_.print();
 
+  std::get<0>(price_request_counter_).clear();
+  std::get<0>(std::get<1>(std::get<1>(price_request_counter_))) = {0};
+  std::get<1>(std::get<1>(std::get<1>(price_request_counter_))) = {0};
+  //
 
+  std::get<0>(std::get<1>(price_request_counter_)) = 0;
   if(position_details_.size() > 0) {
-
-
     //    std::map<int, std::map<std::set<int>, std::atomic<int> > > price_request_counter;
-
-
-
     //    std::tuple<std::set<int>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
 
+    for(auto position:position_details_){
+      if(::fabs(position.second.num_positions_) > 0) 
+        std::get<0>(std::get<1>(price_request_counter_)) += 1;
+    }
 
-    std::get<0>(std::get<1>(price_request_counter_)) = position_details_.size();
 
     std::get<0>(std::get<1>(std::get<1>(price_request_counter_))) = 0;
     std::get<1>(std::get<1>(std::get<1>(price_request_counter_))) = 0;
 
     // get the prices
+    std::map<int,std::string> req_id_to_ticker_map;
+
+     current_price_list_.clear();
     for(const auto& position:position_details_) {
-      const auto& ticker = position.first;
-      int counter = m_orderId++;
-      std::get<0>(price_request_counter_).insert(counter);
+      if(::fabs(position.second.num_positions_) > 0 ) 
+      {
+        const auto& ticker = position.first;
+        int counter = m_orderId++;
+        std::get<0>(price_request_counter_)[counter] = ticker;
+        // std::cout << "counter:" << counter << " " << "ticker:" << ticker << std::endl;
+
+        current_price_list_[counter].last_price_ = {-1};
+        current_price_list_[counter].bid_price_ = {-1};
+        current_price_list_[counter].ask_price_ = {-1};
+
+
+      }
+    }
+
+
+
+
+ //   std::cout << "requesting prices for assets" << std::endl;
+
+    std::unique_lock<std::mutex> lock_request_price(req_position_price_end_mtx_);
+
+    for(const auto& request:std::get<0>(price_request_counter_)) {
+
+//       std::cout << "request id:" << request.first << " ticker:" << request.second << std::endl;
+      const std::string& symbol = request.second;
+      Contract contract;
+      contract.symbol = symbol;
+      contract.secType = "STK";
+      contract.exchange = "SMART";
+      contract.currency = "USD";
+      m_pClient->reqMktData(request.first, contract, "", true, false, TagValueListSPtr());
 
     }
 
+//    std::cout << "waiting on the price request completion" << std::endl;
+
+    req_position_price_end_cond_var_.wait(lock_request_price, [] { return req_position_price_end_cond_var_trigger_; });
+
+    req_position_price_end_cond_var_trigger_ = req_position_price_end_cond_var_trigger_default_;
+
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
+
+
+    std::map<std::string, AssetPrice> ticker_price_map;
+
+    for(auto current_price:current_price_list_) {
+      auto ticker = std::get<0>(price_request_counter_)[current_price.first];
+      ticker_price_map[ticker] = current_price.second;
+      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << std::endl;
+    }
+
+
+    //
+    //
+    //
+    //
 
 
 
@@ -2745,7 +2834,7 @@ void TestCppClient::print_position_details() {
       if(position.second.num_positions_ > 0) {
         long_positions.insert(ticker);
 
-      }else {
+      }else if(::fabs(position.second.num_positions_)) {
         short_positions.insert(ticker);
       }
 
@@ -2763,32 +2852,34 @@ void TestCppClient::print_position_details() {
       for(const auto& position:short_positions) {
 
 
-
         const std::string& symbol = position;
         const auto position_float = position_details_[symbol].num_positions_ ;
         const auto average_cost_float = position_details_[symbol].average_cost_;
         auto total_position_cost = position_float*average_cost_float;
 
-        Contract contract;
-        contract.symbol = symbol;
-        contract.secType = "STK";
-        contract.exchange = "SMART";
-        contract.currency = "USD";
+        //Contract contract;
+        //contract.symbol = symbol;
+        //contract.secType = "STK";
+        //contract.exchange = "SMART";
+        //contract.currency = "USD";
 
 
-        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
-        const int tickerId = *it;
+        //auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        //const int tickerId = *it;
 
         // Request market data. The last two arguments are for regulatory snapshots and API generic tags.
         // Setting snapshot to false gives a continuous live stream.
 
-        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+        //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
 
 
 
 
         if(::fabs(position_float) > 0) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float, total_position_cost); 
+          // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
+           fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:"), symbol);
+           float percent_deviation = 100.0*(ticker_price_map[symbol].last_price_ - average_cost_float)/average_cost_float;
+          std::cout << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << std::endl;
         }
       }
 
@@ -2813,16 +2904,14 @@ void TestCppClient::print_position_details() {
         contract.currency = "USD";
 
 
+        //        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        //        const int tickerId = *it;
 
-
-        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
-        const int tickerId = *it;
-
-        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+        //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
 
 
         if(position_float > 0){
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black) , "{}:({},{},{},{})\n",symbol,position_float,average_cost_float, ticker_price_map[symbol].last_price_,total_position_cost);
         }
       }
     }
@@ -2834,7 +2923,7 @@ void TestCppClient::print_position_details() {
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
 
-  getchar();
+  
 
 }
 //! [position]
@@ -2893,11 +2982,13 @@ void TestCppClient::position( const std::string& account, const Contract& contra
 
 //! [positionend]
 void TestCppClient::positionEnd() {
-  request_mutex_.unlock();
   auto now = std::chrono::system_clock::now();
   auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
   std::cout << std::format("Local Time: {:%F %T}\n", local_time);
   std::cout << "############################################################"<< std::endl;
+  req_position_end_cond_var_trigger_ = true;
+
+  req_position_end_cond_var_.notify_one();
 
   //  print_once_positions_ = !print_once_positions_default_;
   //  std::cout << "position End" << std::endl;
@@ -3482,5 +3573,16 @@ void TestCppClient::ctor_helpers() {
   buying_power_ = buying_power_default_;
 }
 
+
+bool TestCppClient::req_position_end_cond_var_trigger_ = {req_position_end_cond_var_trigger_default_};
+std::mutex TestCppClient::req_position_end_mtx_;
+std::condition_variable TestCppClient::req_position_end_cond_var_;
+
+
+std::condition_variable TestCppClient::req_position_price_end_cond_var_;
+std::mutex TestCppClient::req_position_price_end_mtx_;
+bool TestCppClient::req_position_price_end_cond_var_trigger_ = {req_position_price_end_cond_var_trigger_default_};
+
+std::map<int, AssetPrice> TestCppClient::current_price_list_;
 
 #endif
