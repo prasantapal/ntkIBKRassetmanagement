@@ -1,31 +1,25 @@
 #define FMT_HEADER_ONLY
-#include <iostream>
-
-#include <fmt/core.h>
-#include <fmt/color.h>
-#include <fmt/ranges.h>
-#include <numeric>
-#include <execution>
-#include <vector>
-#include "StdAfx.h"
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <cxxopts.hpp>
-#include <chrono>
-#include <thread>
-#include <cstdlib>
+#include "data_types.hpp"
 #include "TestCppClient.h"
-#include "OrderSamples.h"
 #include "headers.hpp"
+#include "OrderSamples.h"
 #include "vanilla_header.hpp"
-#include "tmux_management.hpp"
 #include "market_data.hpp"
 const unsigned MAX_ATTEMPTS = 50;
 const unsigned SLEEP_TIME = 10;
-const unsigned SLEEP_TIME_WATCH = 5000;
+const unsigned SLEEP_TIME_WATCH = 15000; //ms
 #define TESTING_MODE
 #undef TESTING_MODE
+
+
+// Define a custom facet for grouping digits
+struct separate_thousands : std::numpunct<char> {
+    char_type do_thousands_sep() const override { return ','; } // Use comma
+    std::string do_grouping() const override { return "\3"; }    // Group by 3 digits
+};
+
+
+
 
 /* IMPORTANT: always use your paper trading account. The code below will submit orders as part of the demonstration. */
 /* IB will not be responsible for accidental executions on your live account. */
@@ -35,6 +29,10 @@ const unsigned SLEEP_TIME_WATCH = 5000;
 int main(int argc, char** argv) {
   std::ios_base::sync_with_stdio(true);
   setlocale(LC_NUMERIC, "");
+
+  std::cout.imbue(std::locale(std::cout.getloc(), new separate_thousands));
+
+
   TmuxManagement tmux_management;
   //  std::string msg = "SENDIGN MSG!";
   //  tmux_management.send_msg_to_last_ttys(std::move(msg));
@@ -160,7 +158,6 @@ int main(int argc, char** argv) {
     while( client.isConnected()) {
 
         client.print_position_details();
-        getchar();
 
       //     std::string asset = {"SOXS"};
       //     auto price = client.get_ticker_price(asset);

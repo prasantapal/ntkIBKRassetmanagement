@@ -5,6 +5,22 @@
 #ifndef TWS_API_SAMPLES_TESTCPPCLIENT_TESTCPPCLIENT_H
 #define TWS_API_SAMPLES_TESTCPPCLIENT_TESTCPPCLIENT_H
 #define FMT_HEADER_ONLY
+#include <iostream>
+#include <fmt/core.h>
+#include <fmt/color.h>
+#include <fmt/ranges.h>
+#include <numeric>
+#include <execution>
+#include <vector>
+#include "StdAfx.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <cxxopts.hpp>
+#include <chrono>
+#include <thread>
+#include <cstdlib>
+
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -20,19 +36,31 @@
 #include <fmt/compile.h>
 #include <fmt/ostream.h>
 #include <fmt/printf.h>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <json/json.h>
 
-#include "data_types.hpp"
 #include "EWrapper.h"
 #include "EReaderOSSignal.h"
 #include "EReader.h"
 #include "OrderState.h"
+std::vector<std::string> get_tmux_ttys();
+bool has_only_spaces(const std::string& str);
+std::string exec(std::string cmd);
 
+
+#include "tmux_management.hpp"
 #include <memory>
 #include <vector>
 #include <cstring>
 
-class EClientSocket;
-
+struct OpenOrderInfo {
+  int orderId;
+  Contract contract;
+  Order order;
+  OrderState orderState;
+};
 
 struct AssetPrice {
 float last_price_;
@@ -80,8 +108,7 @@ struct CurrentAccountState {
   static float LookAheadExcessLiquidity_;
 
 
-
-
+  static Json::Value account_update_state_;
 
   void print() const;
 };
@@ -324,7 +351,6 @@ class TestCppClient : public EWrapper
     static double constexpr buying_power_default_  = {0.0};
     CurrentAccountState current_account_state_;
 
-
     /////////////////////////////////////////////////////////////////////
     static std::map<int, AssetPrice> current_price_list_;
 
@@ -338,6 +364,17 @@ class TestCppClient : public EWrapper
     static bool req_position_price_end_cond_var_trigger_;
     static bool constexpr req_position_price_end_cond_var_trigger_default_ = {false};
     static std::mutex req_position_price_end_mtx_;
+
+    static std::condition_variable account_update_end_cond_var_;
+    static std::mutex account_update_end_mtx_;
+    static bool account_update_end_cond_var_trigger_;
+    static bool constexpr account_update_end_cond_var_trigger_default_ = {false};
+
+
+    static std::condition_variable req_open_oder_end_cond_var_;
+    static std::mutex req_open_oder_end_mtx_;
+    static bool req_open_oder_cond_var_trigger_;
+    static bool constexpr req_open_oder_cond_var_trigger_default_ = {false};
 
 
 
@@ -353,6 +390,9 @@ class TestCppClient : public EWrapper
     // ID, price, volume
     std::tuple<std::map<int,std::string>, std::tuple<int, std::tuple<std::atomic<int>,std::atomic<int>>> >  price_request_counter_;
 
+    static Json::Value account_summary_;
+
+  static TmuxManagement tmux_management;
 };
 
 

@@ -7,7 +7,7 @@ message("Home" ${HOME})
 set (CC gcc-16)
 set (CXX g++-16)
 
-set(CMAKE_CXX_FLAGS " -Wuninitialized -Wno-psabi -O3 -fsigned-char  -ansi -Wall -Wextra -Weffc++ -fopenmp -fconcepts")
+set(CMAKE_CXX_FLAGS " -Wuninitialized -Wno-psabi -O2 -fsigned-char  -ansi -Wall -Wextra -Weffc++ -fopenmp -fconcepts")
 
 
 #set whether or not OpenCV is included
@@ -49,7 +49,8 @@ set_target_properties(TestCppClient
 )
 # target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi_backup.a /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a )
 # target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a )
- target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a )
+target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a /usr/local/lib/libjsoncpp.a)
+#target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a  ${HOME}/softwares/lib/jsoncpp/build/lib/libjsoncpp.a)
 # target_include_directories(TestCppClient PRIVATE  /opt/homebrew/include "${PROJECT_SOURCE_DIR}/source/cppclient/" "${PROJECT_SOURCE_DIR}/source/cppclient/client/")
 #target_link_libraries(TestCppClient PUBLIC Threads::Threads)
 

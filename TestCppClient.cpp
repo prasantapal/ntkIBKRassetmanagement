@@ -2,7 +2,6 @@
  * and conditions of the IB API Non-Commercial License or the IB API Commercial License, as applicable. */
 
 #include "StdAfx.h"
-
 #include "TestCppClient.h"
 #include <locale.h>
 #include <fmt/format.h> // For general formatting configurations
@@ -47,8 +46,26 @@
 #include <cstdint>
 #include <sstream>
 
+
+
+#define BOLD "\033[1m"
+#define GRAY "\033[90m"
+#define RESET   "\033[0m"
+#define RED     "\033[31m"
+#define BRICK_RED "\033[38;2;178;34;34m"
+#define BRIGHT_BRICK_RED "\033[91m"
+
+#define PURPLE   "\033[35m"
+#define GREEN   "\033[32m"
+#define YELLOW  "\033[33m"
+#define BLUE    "\033[34m"
+#define MAGENTA "\033[35m"
+#define CYAN    "\033[36m"
 const int PING_DEADLINE = 2; // seconds
 const int SLEEP_BETWEEN_PINGS = 30; // seconds
+
+
+
 
 
 void CurrentAccountState::ctor_helpers() {
@@ -71,7 +88,6 @@ CurrentAccountState::~CurrentAccountState() {
 
 void CurrentAccountState::print() const {
 
-  std::cout << "BP:" << buying_power_ << " SMA:" << SMA_ << " "  << std::endl;
 
 }
 ///////////////////////////////////////////////////////////
@@ -2020,13 +2036,26 @@ void TestCppClient::error(int id, time_t errorTime, int errorCode, const std::st
   else {
     errorTimeStr[0] = '\0';
   }
+  std::string msg = {""};
 
   if (!advancedOrderRejectJson.empty()) {
-    printf("Error. Id: %d, Time: %s, Code: %d, Msg: %s, AdvancedOrderRejectJson: %s\n", id, errorTimeStr, errorCode, errorString.c_str(), advancedOrderRejectJson.c_str());
+    // printf("Error. Id: %d, Time: %s, Code: %d, Msg: %s, AdvancedOrderRejectJson: %s\n", id, errorTimeStr, errorCode, errorString.c_str(), advancedOrderRejectJson.c_str());
+
+    std::stringstream ss;
+
+    ss << "Error. Id:" << " " << id << " Time:" << errorTimeStr << " Code:" <<  errorCode << " Msg:" << errorString << " AdvancedOrderRejectJson:" << advancedOrderRejectJson << std::endl;
+    msg = ss.str();
+
   } else {
-    printf("Error. Id: %d, Time: %s, Code: %d, Msg: %s\n", id, errorTimeStr, errorCode, errorString.c_str());
+    // printf("Error. Id: %d, Time: %s, Code: %d, Msg: %s\n", id, errorTimeStr, errorCode, errorString.c_str());
+    std::stringstream ss;
+
+    ss << "Error. Id:" << " " << id << " Time:" << errorTimeStr << " Code:" <<  errorCode << " Msg:" << errorString << " AdvancedOrderRejectJson:" << advancedOrderRejectJson << std::endl;
+    msg = ss.str();
+
   }
 
+  tmux_management.send_msg_to_last_ttys(std::move(msg));
 
 }
 //! [error]
@@ -2061,18 +2090,41 @@ void TestCppClient::tickPrice(int reqId, TickType field, double price, const Tic
 }
 void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {
 
-   //std::cout << "reqId:" << reqId << std::endl;
-   //std::cout << "reqId:" << reqId << " field:" << field << " " << size << std::endl;
+  //std::cout << "reqId:" << reqId << std::endl;
+  //std::cout << "reqId:" << reqId << " field:" << field << " " << size << std::endl;
 
 }
 void TestCppClient::tickOptionComputation(int reqId, TickType tickType, int tickAttrib, double impliedVol, double delta, double optPrice, double pvDividend, double gamma, double vega, double theta, double undPrice) {}
 void TestCppClient::tickGeneric(int reqId, TickType tickType, double value) {
 
-//  std::cout << "tick price trigger" << std::endl;
+  //  std::cout << "tick price trigger" << std::endl;
 }
 void TestCppClient::tickString(int reqId, TickType tickType, const std::string& value) {}
 void TestCppClient::tickEFP(int reqId, TickType tickType, double basisPoints, const std::string& formattedBasisPoints, double totalDividends, int holdDays, const std::string& futureLastTradeDate, double dividendImpact, double dividendsToLastTradeDate) {}
-void TestCppClient::orderStatus(int orderId, const std::string& status, Decimal filled, Decimal remaining, double avgFillPrice, long long permId, int parentId, double lastFillPrice, int clientId, const std::string& whyHeld, double mktCapPrice) {}
+void TestCppClient::orderStatus(int orderId, 
+    const std::string& status, 
+    Decimal filled, 
+    Decimal remaining, 
+    double avgFillPrice, 
+    long long permId, 
+    int parentId, 
+    double lastFillPrice, 
+    int clientId, 
+    const std::string& whyHeld, 
+    double mktCapPrice) {
+
+
+     std::cout << "Order Status Update -> "
+              << " ID: " << orderId
+              << " | Status: " << status
+              << " | Filled: " << std::to_string(filled)
+              << " | Remaining: " << std::to_string(remaining)
+              << " | Avg Price: " << avgFillPrice 
+              << std::endl;
+
+
+}
+
 void TestCppClient::openOrder(int orderId, const Contract& contract, const Order& order, const OrderState& orderState) {
 
   //  std::cout << "here are the open orders:" << orderId << std::endl;
@@ -2082,8 +2134,9 @@ void TestCppClient::openOrder(int orderId, const Contract& contract, const Order
 
 }
 void TestCppClient::openOrderEnd() {
+  req_open_oder_cond_var_trigger_ = true;
+  req_open_oder_end_cond_var_.notify_one();
   std::cerr << "open order ends" << std::endl;
-
 }
 
 void TestCppClient::winError( const std::string& str, int lastError) {}
@@ -2096,6 +2149,7 @@ void TestCppClient::updateAccountValue(const std::string& key, const std::string
     const std::string& currency, const std::string& accountName) {
   // printf("UpdateAccountValue. Key: %s, Value: %s, Currency: %s, Account Name: %s\n", key.c_str(), val.c_str(), currency.c_str(), accountName.c_str());
 
+  std::cout << "UPDATING ACCOUNT VALUE:" << std::endl;
 
   if (key.contains( "EquityWithLoanValue")) {
     // val contains the maximum dollar value of securities you can buy
@@ -2646,28 +2700,28 @@ void TestCppClient::deltaNeutralValidation(int reqId, const DeltaNeutralContract
 
 void TestCppClient::tickSnapshotEnd(int reqId) {
 
-//  std::cout << "tick snapshot ends of reqId:" << reqId << std::endl;
+  //  std::cout << "tick snapshot ends of reqId:" << reqId << std::endl;
 
   if(std::get<0>(price_request_counter_).contains(reqId)) {
-//    std::cout << "reqId:" << reqId << " belongs to search space" << std::endl;
+    //    std::cout << "reqId:" << reqId << " belongs to search space" << std::endl;
     std::get<0>(std::get<1>( std::get<1>(price_request_counter_)))++;
     std::get<1>(std::get<1>( std::get<1>(price_request_counter_)))++;
 
     const auto& counter_value = std::get<0>( std::get<1>(price_request_counter_));
 
     if(std::get<0>(std::get<1>( std::get<1>(price_request_counter_))) == counter_value) {
- //     std::cout << "price request counter are finished" << std::endl;
+      //     std::cout << "price request counter are finished" << std::endl;
 
-  //    std::cout << "counter value:" << counter_value << std::endl;
+      //    std::cout << "counter value:" << counter_value << std::endl;
       req_position_price_end_cond_var_trigger_ = true;
       req_position_price_end_cond_var_.notify_one();
-   //   std::cout << "Price request done!" << counter_value << std::endl;
+      //   std::cout << "Price request done!" << counter_value << std::endl;
 
     }
 
   }else {
 
-//    std::cout << "reqId:" << reqId << " DOES NOT belong to search space" << std::endl;
+    //    std::cout << "reqId:" << reqId << " DOES NOT belong to search space" << std::endl;
     for(const auto& it:std::get<0>(price_request_counter_)) {
       std::cout << it.first << " " << it.second << std::endl;
     }
@@ -2682,7 +2736,7 @@ void TestCppClient::tickSnapshotEnd(int reqId) {
 
 //! [marketdatatype]
 void TestCppClient::marketDataType(int reqId, int marketDataType) {
-//  printf( "MarketDataType. ReqId: %d, Type: %d\n", reqId, marketDataType);
+  //  printf( "MarketDataType. ReqId: %d, Type: %d\n", reqId, marketDataType);
 }
 //! [marketdatatype]
 
@@ -2694,25 +2748,56 @@ void TestCppClient::commissionAndFeesReport( const CommissionAndFeesReport& comm
 
 void TestCppClient::print_position_details() {
 
-  std::unique_lock<std::mutex> lock(req_position_end_mtx_);
+
+
+  // fmt::print("{}","Printing position details!");
+  m_pClient->reqOpenOrders();
+  std::cout << "waiting on open order trigger" << std::endl;
+
+  std::unique_lock<std::mutex> req_open_order_end_lock(req_open_oder_end_mtx_);
+  //  // 2. Wait until the predicate condition evaluates to true
+  req_open_oder_end_cond_var_.wait(req_open_order_end_lock, [] { return req_open_oder_cond_var_trigger_; });
+  req_open_oder_cond_var_trigger_ = req_open_oder_cond_var_trigger_default_;
+
+  std::cout << "Received open order trigger" << std::endl;
+
+  //  std::unique_lock<std::mutex> lock_open_order(req_open_oder_end_mtx_);
+
+
+
+  // m_pClient->reqAccountUpdates(false, ""); 
+  auto account_summary_order_id = m_orderId++;
+
+  std::cout << "requesting account summary:" << std::endl;
+  account_summary_.clear();
+  m_pClient->reqAccountSummary(account_summary_order_id, "All", AccountSummaryTags::getAllTags());
+
+  std::cout << "stop requesting account summary:" << std::endl;
+
+
+
+
+
+
   //request_mutex_.lock();
 
-//  std::cout << "making request" << std::endl;
+  //  std::cout << "making request" << std::endl;
   m_pClient->reqPositions();
 
- // std::cout << "waiting..." << std::endl;
+  // std::cout << "waiting..." << std::endl;
 
 
   // 1. Acquire the lock using std::unique_lock
   //
   // req_position_end_cond_var_.notify_one();
 
+  std::unique_lock<std::mutex> lock(req_position_end_mtx_);
   // 2. Wait until the predicate condition evaluates to true
   req_position_end_cond_var_.wait(lock, [] { return req_position_end_cond_var_trigger_; });
 
   req_position_end_cond_var_trigger_ = req_position_end_cond_var_trigger_default_;
 
-//  fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position request ends!");
+  //  fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position request ends!");
 
 
 
@@ -2763,7 +2848,7 @@ void TestCppClient::print_position_details() {
     // get the prices
     std::map<int,std::string> req_id_to_ticker_map;
 
-     current_price_list_.clear();
+    current_price_list_.clear();
     for(const auto& position:position_details_) {
       if(::fabs(position.second.num_positions_) > 0 ) 
       {
@@ -2783,13 +2868,13 @@ void TestCppClient::print_position_details() {
 
 
 
- //   std::cout << "requesting prices for assets" << std::endl;
+    //   std::cout << "requesting prices for assets" << std::endl;
 
     std::unique_lock<std::mutex> lock_request_price(req_position_price_end_mtx_);
 
     for(const auto& request:std::get<0>(price_request_counter_)) {
 
-//       std::cout << "request id:" << request.first << " ticker:" << request.second << std::endl;
+      //       std::cout << "request id:" << request.first << " ticker:" << request.second << std::endl;
       const std::string& symbol = request.second;
       Contract contract;
       contract.symbol = symbol;
@@ -2800,7 +2885,7 @@ void TestCppClient::print_position_details() {
 
     }
 
-//    std::cout << "waiting on the price request completion" << std::endl;
+    //    std::cout << "waiting on the price request completion" << std::endl;
 
     req_position_price_end_cond_var_.wait(lock_request_price, [] { return req_position_price_end_cond_var_trigger_; });
 
@@ -2817,11 +2902,6 @@ void TestCppClient::print_position_details() {
       std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << std::endl;
     }
 
-
-    //
-    //
-    //
-    //
 
 
 
@@ -2855,7 +2935,10 @@ void TestCppClient::print_position_details() {
         const std::string& symbol = position;
         const auto position_float = position_details_[symbol].num_positions_ ;
         const auto average_cost_float = position_details_[symbol].average_cost_;
-        auto total_position_cost = position_float*average_cost_float;
+        auto total_position_cost = ::fabs(position_float*average_cost_float);
+        const auto& last_price = ticker_price_map[symbol].last_price_;
+        auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
+
 
         //Contract contract;
         //contract.symbol = symbol;
@@ -2877,16 +2960,24 @@ void TestCppClient::print_position_details() {
 
         if(::fabs(position_float) > 0) {
           // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
-           fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:"), symbol);
-           float percent_deviation = 100.0*(ticker_price_map[symbol].last_price_ - average_cost_float)/average_cost_float;
-          std::cout << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << std::endl;
-        }
-      }
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
+          float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
+          if(percent_deviation > 0){
 
+            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
+            // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
+          }
+          else {
+            std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
+
+          }
+        }
+
+      }
     }
 
     if(long_positions.size() > 0){
-      fmt::print(fg(fmt::color::green) | bg(fmt::color::black), "LONGS:\n");
+      fmt::print(fg(fmt::color::red) | bg(fmt::color::black), "LONGS:\n");
 
       //  float num_positions_;
       //  float average_cost_;
@@ -2911,7 +3002,19 @@ void TestCppClient::print_position_details() {
 
 
         if(position_float > 0){
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black) , "{}:({},{},{},{})\n",symbol,position_float,average_cost_float, ticker_price_map[symbol].last_price_,total_position_cost);
+
+
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), fmt::runtime("{}:"), symbol);
+          float percent_deviation = 100.0*(ticker_price_map[symbol].last_price_ - average_cost_float)/average_cost_float;
+
+          if(percent_deviation < 0){
+            std::cout << RED << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << RESET << std::endl;
+          } else{
+            std::cout << GREEN << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << RESET << std::endl;
+
+          }
+
+
         }
       }
     }
@@ -2923,7 +3026,26 @@ void TestCppClient::print_position_details() {
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
 
-  
+  std::cout << "waiting for account update to finish" << std::endl;
+
+  std::unique_lock<std::mutex> account_update_lock(account_update_end_mtx_);
+  // 2. Wait until the predicate condition evaluates to true
+  account_update_end_cond_var_.wait(account_update_lock, [] { return account_update_end_cond_var_trigger_; });
+
+
+
+
+  std::cout << "ACCOUNT UPDATE FINISHED! " << std::endl;
+
+  //
+  // reset the game!
+  account_update_end_cond_var_trigger_ = account_update_end_cond_var_trigger_default_;
+
+  std::cout << account_summary_ << std::endl;
+
+
+
+  m_pClient->cancelAccountSummary(account_summary_order_id);
 
 }
 //! [position]
@@ -2997,13 +3119,18 @@ void TestCppClient::positionEnd() {
 
 //! [accountsummary]
 void TestCppClient::accountSummary( int reqId, const std::string& account, const std::string& tag, const std::string& value, const std::string& currency) {
-  printf( "Acct Summary. ReqId: %d, Account: %s, Tag: %s, Value: %s, Currency: %s\n", reqId, account.c_str(), tag.c_str(), value.c_str(), currency.c_str());
+  //  printf( "Acct Summary. ReqId: %d, Account: %s, Tag: %s, Value: %s, Currency: %s\n", reqId, account.c_str(), tag.c_str(), value.c_str(), currency.c_str());
+  account_summary_[tag] = ::atof(value.c_str()); 
+
 }
 //! [accountsummary]
 
 //! [accountsummaryend]
 void TestCppClient::accountSummaryEnd( int reqId) {
-  printf( "AccountSummaryEnd. Req Id: %d\n", reqId);
+  //  printf( "AccountSummaryEnd. Req Id: %d\n", reqId);
+  account_update_end_cond_var_trigger_ = true;
+  account_update_end_cond_var_.notify_one();
+
 }
 //! [accountsummaryend]
 
@@ -3426,10 +3553,10 @@ void TestCppClient::currentTimeInMillis(time_t timeInMillis) {
 void TestCppClient::execDetailsProtoBuf(const protobuf::ExecutionDetails& executionDetailsProto) {}
 void TestCppClient::execDetailsEndProtoBuf(const protobuf::ExecutionDetailsEnd& executionDetailsEndProto) {}
 void TestCppClient::orderStatusProtoBuf(const protobuf::OrderStatus& orderStatusProto) {
-  printf("Order Status: %s\n", orderStatusProto.ShortDebugString().c_str());
+  //printf("Order Status: %s\n", orderStatusProto.ShortDebugString().c_str());
 
-  std::cout << " now printing account summary:" << std::endl;
-  m_pClient->reqAccountSummary(++m_orderId, "All", AccountSummaryTags::getAllTags());
+  // std::cout << " now printing account summary:" << std::endl;
+  //  m_pClient->reqAccountSummary(++m_orderId, "All", AccountSummaryTags::getAllTags());
 
 
 
@@ -3439,7 +3566,26 @@ void TestCppClient::openOrderProtoBuf(const protobuf::OpenOrder& openOrderProto)
 }
 void TestCppClient::openOrdersEndProtoBuf(const protobuf::OpenOrdersEnd& openOrdersEndProto) {
   printf("Open Orders End: %s\n", openOrdersEndProto.ShortDebugString().c_str());
+
+
 }
+
+//void TestCppClient::openOrder(OrderId orderId, const Contract& contract, 
+//                          const Order& order, const OrderState& orderState) {
+//    // Process each open order here
+//}
+
+//void TestCppClient::orderStatus(OrderId orderId, const std::string& status, 
+//                            double filled, double remaining, double avgFillPrice, 
+//                            int permId, int parentId, double lastFillPrice, 
+//                            int clientId, const std::string& whyHeld) {
+//    // Track order status updates
+//}
+//
+
+
+
+
 void TestCppClient::errorProtoBuf(const protobuf::ErrorMessage& errorProto) {}
 void TestCppClient::completedOrderProtoBuf(const protobuf::CompletedOrder& completedOrderProto) {
   printf("Completed Order: %s\n", completedOrderProto.ShortDebugString().c_str());
@@ -3583,6 +3729,101 @@ std::condition_variable TestCppClient::req_position_price_end_cond_var_;
 std::mutex TestCppClient::req_position_price_end_mtx_;
 bool TestCppClient::req_position_price_end_cond_var_trigger_ = {req_position_price_end_cond_var_trigger_default_};
 
+std::condition_variable TestCppClient::account_update_end_cond_var_;
+std::mutex TestCppClient::account_update_end_mtx_;
+bool TestCppClient::account_update_end_cond_var_trigger_ = {account_update_end_cond_var_trigger_default_};
+
+
+
+std::condition_variable TestCppClient::req_open_oder_end_cond_var_;
+std::mutex TestCppClient::req_open_oder_end_mtx_;
+bool TestCppClient::req_open_oder_cond_var_trigger_ = {req_open_oder_cond_var_trigger_default_};
+
+
+
+
+
+
 std::map<int, AssetPrice> TestCppClient::current_price_list_;
 
+Json::Value CurrentAccountState::account_update_state_;
+Json::Value TestCppClient::account_summary_;
+
+
+TmuxManagement TestCppClient::tmux_management;
+
+template<typename T>
+void TmuxManagement::send_msg_to_last_ttys(const T&& msg) {
+
+  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
+
+  std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_last_TMUX_warrior;
+
+  //   std::cout << "command:" << command << std::endl;
+  std::erase(command, '\n');
+  std::erase(command, '\r');
+
+
+  ::exec(command);
+
+
+  //  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
+  //
+  //  ::exec(command);
+}
+
+void TmuxManagement::populate_tmux_ttys() {
+
+  tmux_ttys_ = get_tmux_ttys();
+
+  std::cout << "tmux_result:" << std::endl;
+
+  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
+
+  //  std::sort(tmux_ttys_.begin(),tmux_ttys_.end());
+  //
+  //  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
+
+
+  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
+
+  std::string command = std::string("echo ") + std::string("hello tty:") +  the_last_TMUX_warrior  + std::string(" > ") + the_last_TMUX_warrior;
+
+  std::cout << command << std::endl;
+
+  ::exec(command);
+
+
+  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
+
+  ::exec(command);
+}
+
+void TmuxManagement::ctor_helpers() {
+  populate_tmux_ttys();
+}
+
+void TmuxManagement::dtor_helpers() {
+}
+
+TmuxManagement::TmuxManagement() {
+  ctor_helpers();
+
+}
+TmuxManagement::~TmuxManagement() {
+
+  dtor_helpers();
+}
+
+
+template<typename T>
+void TmuxManagement::send_msg_to_last_ttys(const T&& msg, int index) {
+
+
+  auto the_TMUX_warrior = tmux_ttys_.at(index);
+
+  std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_TMUX_warrior;
+  std::cout << command << std::endl;
+  ::exec(command);
+}
 #endif
