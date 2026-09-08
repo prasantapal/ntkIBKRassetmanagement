@@ -15,7 +15,7 @@
 #include "StdAfx.h"
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <Decimal.h>
 #include <cxxopts.hpp>
 #include <chrono>
 #include <thread>
@@ -54,6 +54,20 @@ std::string exec(std::string cmd);
 #include <memory>
 #include <vector>
 #include <cstring>
+
+struct OrderStatus {
+
+  int orderId;
+  std::string status;
+  double remaining;
+  double filled;
+  double avgFillPrice;
+  double lastFillPrice;
+  std::string whyHeld;
+  double mktCapPrice;
+
+
+};
 
 struct OpenOrderInfo {
   int orderId;
@@ -111,6 +125,7 @@ struct CurrentAccountState {
   static Json::Value account_update_state_;
 
   void print() const;
+
 };
 
 
@@ -220,8 +235,7 @@ enum State {
 };
 
 //! [ewrapperimpl]
-class TestCppClient : public EWrapper
-{
+class TestCppClient : public EWrapper {
   //! [ewrapperimpl]
   public:
 
@@ -377,6 +391,11 @@ class TestCppClient : public EWrapper
     static bool constexpr req_open_oder_cond_var_trigger_default_ = {false};
 
 
+  static std::mutex req_open_oder_status_update_mtx_;
+  static std::map<int,OrderStatus> open_order_status_update_;
+
+  static std::mutex req_open_oder_status_update_proto_mtx_;
+  static std::map<std::string,std::map<int,OrderStatus>> open_order_status_proto_update_;
 
 
 

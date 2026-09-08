@@ -2099,8 +2099,15 @@ void TestCppClient::tickGeneric(int reqId, TickType tickType, double value) {
 
   //  std::cout << "tick price trigger" << std::endl;
 }
-void TestCppClient::tickString(int reqId, TickType tickType, const std::string& value) {}
-void TestCppClient::tickEFP(int reqId, TickType tickType, double basisPoints, const std::string& formattedBasisPoints, double totalDividends, int holdDays, const std::string& futureLastTradeDate, double dividendImpact, double dividendsToLastTradeDate) {}
+void TestCppClient::tickString(int reqId, TickType tickType, const std::string& value) {
+
+}
+
+void TestCppClient::tickEFP(int reqId, TickType tickType, double basisPoints, const std::string& formattedBasisPoints, double totalDividends, int holdDays, const std::string& futureLastTradeDate, double dividendImpact, double dividendsToLastTradeDate) {
+
+}
+
+
 void TestCppClient::orderStatus(int orderId, 
     const std::string& status, 
     Decimal filled, 
@@ -2114,13 +2121,42 @@ void TestCppClient::orderStatus(int orderId,
     double mktCapPrice) {
 
 
-     std::cout << "Order Status Update -> "
-              << " ID: " << orderId
-              << " | Status: " << status
-              << " | Filled: " << std::to_string(filled)
-              << " | Remaining: " << std::to_string(remaining)
-              << " | Avg Price: " << avgFillPrice 
-              << std::endl;
+  std::cout << "Order Status Update -> "
+    << " ID: " << orderId
+    << " | Status: " << status
+    << " | Filled: " << DecimalFunctions::decimalToString(filled)
+    << " | Remaining: " << DecimalFunctions::decimalToString(remaining)
+    << " | Filled: " << DecimalFunctions::decimalStringToDisplay(filled)
+    << " | Remaining: " << DecimalFunctions::decimalStringToDisplay(remaining)
+    << " | Avg Price: " << avgFillPrice 
+    << " | lastFillPrice: " << lastFillPrice 
+    << " | whyHeld: " << whyHeld 
+    << " | mktCapPrice: " << mktCapPrice 
+    << std::endl;
+
+
+  // static std::mutex req_open_oder_status_update_mtx_;
+  // static std::map<std::string,std::map<int,OrderStatus>> order_status_update_;
+
+  OrderStatus order_status;
+  order_status.orderId = orderId;
+  order_status.status = status;
+  order_status.remaining = std::stod(DecimalFunctions::decimalToString(remaining));
+  order_status.filled = std::stod(DecimalFunctions::decimalToString(filled));
+  order_status.avgFillPrice =  avgFillPrice;
+  order_status.lastFillPrice = lastFillPrice;
+  order_status.whyHeld =  whyHeld;
+  order_status.mktCapPrice = mktCapPrice;
+
+
+  std::lock_guard<std::mutex> guard(req_open_oder_status_update_mtx_);
+  {
+    open_order_status_update_[orderId] = order_status;
+
+  }
+
+
+
 
 
 }
@@ -3562,10 +3598,34 @@ void TestCppClient::orderStatusProtoBuf(const protobuf::OrderStatus& orderStatus
 
 }
 void TestCppClient::openOrderProtoBuf(const protobuf::OpenOrder& openOrderProto) {
-  printf("Open Order: %s\n", openOrderProto.ShortDebugString().c_str());
+  //  printf("Open Order Protobuf: %s\n", openOrderProto.ShortDebugString().c_str());
+  std::cout << "Open Order Protobuf" << std::endl;
+
+  int32_t order_id = openOrderProto.orderid();
+
+  // 2. Accessing Contract fields (nested message)
+  const auto& contract = openOrderProto.contract();
+  std::string symbol = contract.symbol();
+  std::string sec_type = contract.sectype();
+
+  // 3. Accessing Order parameters (nested message)
+  const auto& order = openOrderProto.order();
+  std::string action = order.action();       // e.g., "BUY" or "SELL"
+  double total_quantity = ::atof(order.totalquantity().c_str());
+  double lmt_price = order.lmtprice();
+  // 4. Accessing OrderState metrics (nested message)
+  const auto& order_state = openOrderProto.orderstate();
+  std::string status = order_state.status(); // e.g., "Submitted"
+
+
+  std::cout << "order_id:" << order_id << "\n "  << "symbol:" << symbol << "\n action:" << action << "\ntotal_quantity:" << total_quantity << "\n lmt_price:" << lmt_price << "\n status:" <<  status << std::endl;
+
+
+
+
 }
 void TestCppClient::openOrdersEndProtoBuf(const protobuf::OpenOrdersEnd& openOrdersEndProto) {
-  printf("Open Orders End: %s\n", openOrdersEndProto.ShortDebugString().c_str());
+  printf("Open Orders Proto End: %s\n", openOrdersEndProto.ShortDebugString().c_str());
 
 
 }
@@ -3740,6 +3800,13 @@ std::mutex TestCppClient::req_open_oder_end_mtx_;
 bool TestCppClient::req_open_oder_cond_var_trigger_ = {req_open_oder_cond_var_trigger_default_};
 
 
+
+std::mutex TestCppClient::req_open_oder_status_update_mtx_;
+std::map<int,OrderStatus> TestCppClient::open_order_status_update_;
+
+
+std::mutex TestCppClient::req_open_oder_status_update_proto_mtx_;
+std::map<std::string,std::map<int,OrderStatus>> TestCppClient::open_order_status_proto_update_;
 
 
 
