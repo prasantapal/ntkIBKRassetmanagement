@@ -44,14 +44,14 @@ int main(int argc, char** argv) {
   fmt::print(fg(fmt::color::green), "{}\n",assets);
   srand(static_cast<unsigned int>(time(NULL)));
   int random_etf_index = rand()%assets.size();
-  std::string random_etf = assets.at(random_etf_index);
+  // std::string random_etf = assets.at(random_etf_index);
   //  .................................................................
   asset_category = ASSET_CATAGORIES::STOCKS_ALL;
   assets =  market_data.get_asset_list(asset_category);
   srand(static_cast<unsigned int>(time(NULL)));
   int random_stock_index = rand()%assets.size();
   std::string random_stock = assets.at(random_stock_index);
-  fmt::print(fg(fmt::color::purple), "{}\n",assets);
+//   fmt::print(fg(fmt::color::purple), "{}\n",assets);
 
   //  std::transform(random_etf.begin(), random_etf.end(), random_etf_upper.begin(), [](unsigned char c) {
   //      return std::toupper(c);
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 
   // 2. Always check for nullptr before using the result
   if (env_p != nullptr) {
-    std::cout << "Your PATH is: " << env_p << std::endl;
+    std::cout << "Your NEUTHEOS_TRADE_DATA_HOME is: " << env_p << std::endl;
   } else {
     std::cout << "The requested environment variable does not exist." << std::endl;
     return 0;
@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 
 
 
-  const char* host = "";
+  const char* host = {""};
   //const char* host = argc > 1 ? argv[1] : "";
   int port = argc > 2 ? atoi(argv[2]) : 0;
   int IBKR_GATEWAY_PORT = {4002};

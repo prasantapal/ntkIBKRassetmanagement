@@ -25,7 +25,6 @@ set(CURRENT_PCL_VERSION 1.12)
 set (CMAKE_BUILD_TYPE "Release")
 
 
-
 include_directories(./  ./include ./include/fifo /opt/homebrew/include ./client ./client/protobufUnix  ${HOME}/${PROTOBUF_PATH})
 
 
@@ -49,7 +48,7 @@ set_target_properties(TestCppClient
 )
 # target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi_backup.a /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a )
 # target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a )
-target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a /usr/local/lib/libjsoncpp.a)
+target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a /usr/local/lib/libjsoncpp.a /usr/local/lib/libThreadPool.dylib)
 #target_link_libraries(TestCppClient PRIVATE /usr/local/lib/libtwsapi.a  /usr/local/lib/libprotobuf.dylib /usr/local/lib/libbid.a  ${HOME}/softwares/lib/jsoncpp/build/lib/libjsoncpp.a)
 # target_include_directories(TestCppClient PRIVATE  /opt/homebrew/include "${PROJECT_SOURCE_DIR}/source/cppclient/" "${PROJECT_SOURCE_DIR}/source/cppclient/client/")
 #target_link_libraries(TestCppClient PUBLIC Threads::Threads)

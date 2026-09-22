@@ -20,6 +20,7 @@
 #include <chrono>
 #include <thread>
 #include <cstdlib>
+#include <utility>
 
 #include <fmt/base.h>
 #include <fmt/format.h>
@@ -41,6 +42,17 @@
 #include <string>
 #include <json/json.h>
 
+
+#include <iostream>
+#include <chrono>
+#include <cmath>
+#include <chrono>
+#include <cmath>
+
+
+#include "ThreadPool.hpp"
+
+
 #include "EWrapper.h"
 #include "EReaderOSSignal.h"
 #include "EReader.h"
@@ -49,11 +61,43 @@ std::vector<std::string> get_tmux_ttys();
 bool has_only_spaces(const std::string& str);
 std::string exec(std::string cmd);
 
+constexpr size_t _size = 10UL;
+constexpr size_t TASKS = 10000UL;
+constexpr size_t ITERATIONS = 100000UL;
+
 
 #include "tmux_management.hpp"
 #include <memory>
 #include <vector>
 #include <cstring>
+
+#include <iostream>
+#include <chrono>
+#include <cmath>
+#include <ThreadPool.hpp>
+
+
+
+#if THREADPOOL_ENABLE_SINGLETON
+#include "ThreadPoolManager.hpp"
+#endif
+
+//constexpr size_t _size = 10UL;
+//constexpr size_t TASKS = 10000UL;
+//constexpr size_t ITERATIONS = 100000UL;
+
+#if THREADPOOL_ENABLE_SINGLETON
+void runThreadPoolManager(void) {
+  auto& _thread_pool = ThreadPool::ThreadPoolManager::get_instance(_size).get_thread_pool();
+
+  std::cout   << "Testing ThreadPoolManager Singleton"
+    << " | ThreadMode mode: " << ThreadPool::ThreadMode_name(_thread_pool.mode()) 
+    << " | Adoptive: " << std::boolalpha << _thread_pool.adoptive()
+    << " | Adoptive Tick: " << _thread_pool.adoptive_tick_size() << std::endl;
+
+}// end void runThreadPoolManager(void)
+#endif
+
 
 struct OrderStatus {
 
@@ -77,9 +121,11 @@ struct OpenOrderInfo {
 };
 
 struct AssetPrice {
-float last_price_;
-float bid_price_;
-float ask_price_;
+  float last_price_;
+  float bid_price_;
+  float ask_price_;
+  std::vector<int> tick_size_;
+  static short int constexpr tick_size_field_max_length_ = {10};
 };
 
 struct PositionDetails {
@@ -234,6 +280,30 @@ enum State {
   ST_TICK_DATA_OPERATIONS_PROTO_ACK
 };
 
+// Intent --> action
+// e.g. at 3:15 PM a thread spins off to do EOD balancing
+// e.g. at 3:15 PM a thread spins off to maximize profit taking
+enum CurrentPositionsIntentList {
+  ProfitTaking,
+  EOD_balancing,
+  SMA_balancing,
+  EXCESS_LIQUIDITY_balancing
+};
+
+enum CurrentPositionsActionsList {
+  CurrentAsset_SAMPLE,
+  CurrentAsset_SELL
+};
+
+struct CurrentPositionsActions {
+  CurrentPositionsActions();
+  ~CurrentPositionsActions();
+  int action;
+  float priority;
+  static float constexpr priority_default = {100.0};
+  static float constexpr action_default = {100.0};
+};
+
 //! [ewrapperimpl]
 class TestCppClient : public EWrapper {
   //! [ewrapperimpl]
@@ -358,6 +428,9 @@ class TestCppClient : public EWrapper {
 
     std::map<std::string, PositionDetails> position_details_;
 
+
+    std::multimap<std::string, std::tuple<int, Contract, Order, OrderState>> open_orders_;
+
     double account_value_;
     static double constexpr account_value_default_  = {0.0};
 
@@ -372,6 +445,9 @@ class TestCppClient : public EWrapper {
     static bool req_position_end_cond_var_trigger_;
     static bool constexpr req_position_end_cond_var_trigger_default_ = {false};
     static std::mutex req_position_end_mtx_;
+
+
+
 
 
     static std::condition_variable req_position_price_end_cond_var_;
@@ -390,20 +466,14 @@ class TestCppClient : public EWrapper {
     static bool req_open_oder_cond_var_trigger_;
     static bool constexpr req_open_oder_cond_var_trigger_default_ = {false};
 
-
-  static std::mutex req_open_oder_status_update_mtx_;
-  static std::map<int,OrderStatus> open_order_status_update_;
-
-  static std::mutex req_open_oder_status_update_proto_mtx_;
-  static std::map<std::string,std::map<int,OrderStatus>> open_order_status_proto_update_;
+    static std::mutex open_order_update_lock_mtx_;
 
 
+    static std::mutex req_open_oder_status_update_mtx_;
+    static std::map<int,OrderStatus> open_order_status_update_;
 
-
-
-
-
-
+    static std::mutex req_open_oder_status_update_proto_mtx_;
+    static std::map<std::string,std::map<int,OrderStatus>> open_order_status_proto_update_;
 
     //    std::tuple<std::map<int,std::string>, std::tuple<int,std::atomic<int>> >  price_request_counter_;
     // ID, price, volume
@@ -411,7 +481,21 @@ class TestCppClient : public EWrapper {
 
     static Json::Value account_summary_;
 
-  static TmuxManagement tmux_management;
+    static TmuxManagement tmux_management;
+
+    std::map<std::string, double> percent_deviation_threshold_map_;
+    static constexpr double percent_deviation_threshold_map_default_threshold_ = {10.0};
+
+
+    /// AUTO ACTION MODES
+    //   std::set<CurrentPositionsActions> current_positions_action_modes_; 
+
+    //    ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> threadpool_priority_(12);
+    static ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> threadpool_priority_;
+    static int threadpool_size_;
+    std::set<std::string> streaming_data_candidates_;
+    static float constexpr bid_ask_lowest_denominator_ = {0.01};
+
 };
 
 

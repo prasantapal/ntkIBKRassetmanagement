@@ -39,6 +39,7 @@
 
 #include <stdio.h>
 #include <chrono>
+#include <tuple>
 #include <iostream>
 #include <thread>
 #include <ctime>
@@ -201,13 +202,11 @@ double TestCppClient::get_ticker_price(std::string ticker) {
 
 
 
-
   return price;
 
 }
 
-bool TestCppClient::connect(const char *host, int port, int clientId)
-{
+bool TestCppClient::connect(const char *host, int port, int clientId) {
   // trying to connect
   //	printf( "Connecting to %s:%d clientId:%d\n", !( host && *host) ? "192.168.50.84" : host, port, clientId);
   //  host = {"192.168.50.84"};
@@ -2090,8 +2089,11 @@ void TestCppClient::tickPrice(int reqId, TickType field, double price, const Tic
 }
 void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {
 
-  //std::cout << "reqId:" << reqId << std::endl;
-  //std::cout << "reqId:" << reqId << " field:" << field << " " << size << std::endl;
+//  std::cout << RED << "size: reqId:" << reqId << " field:" << field << " " << DecimalFunctions::decimalStringToDisplay(size) << RESET << std::endl;
+
+  int tick_size = ::atoi(DecimalFunctions::decimalStringToDisplay(size).c_str());
+  current_price_list_[reqId].tick_size_[field] = tick_size;
+
 
 }
 void TestCppClient::tickOptionComputation(int reqId, TickType tickType, int tickAttrib, double impliedVol, double delta, double optPrice, double pvDividend, double gamma, double vega, double theta, double undPrice) {}
@@ -2161,7 +2163,161 @@ void TestCppClient::orderStatus(int orderId,
 
 }
 
+
+
+
 void TestCppClient::openOrder(int orderId, const Contract& contract, const Order& order, const OrderState& orderState) {
+
+  std::string symbol = contract.symbol;
+  std::cout << "open order symbol:" << symbol << std::endl;
+  //  std::tuple<int,Contract> val;
+  std::tuple<int, Contract, Order, OrderState> value = {orderId, contract, order, orderState};
+
+  std:: lock_guard<std::mutex>  open_order_update_lock(open_order_update_lock_mtx_);
+  {
+    auto element =  std::make_pair(symbol,value);
+    open_orders_.insert(element);
+
+
+    auto action =  order.action;
+    auto total_quantity = order.totalQuantity;
+    auto order_type = order.orderType;
+    auto limit_price = order.lmtPrice;
+    auto aux_price = order.auxPrice;
+    auto order_time_in_force =  order.tif;
+    auto order_transmit = order.transmit;
+
+    /////////////////////////////////////////////////////////////////
+    contract.conId;
+    contract.symbol;
+    contract.secType;
+    contract.lastTradeDateOrContractMonth;
+    contract.right;
+    contract.multiplier;
+    contract.exchange;
+    contract.currency;
+    contract.tradingClass;
+    contract.secIdType;
+    contract.secId;
+    contract.conId;
+    contract.conId;
+
+    /////////////////////////////////////////////////////////////////
+    orderState.initMarginBefore;
+    orderState.maintMarginBefore;
+    orderState.equityWithLoanBefore;
+
+    orderState.initMarginChange;
+    orderState.maintMarginChange;
+    orderState.equityWithLoanChange;
+
+    orderState.initMarginAfter;
+    orderState.maintMarginAfter;
+    orderState.equityWithLoanAfter;
+
+    // orderState.commission;
+    orderState.minCommissionAndFees;
+    orderState.maxCommissionAndFees;
+    orderState.warningText;
+    orderState.completedTime;
+    orderState.completedStatus;
+
+    orderState.rejectReason;
+    orderState.suggestedSize;
+  }
+
+  // std::string status;
+  // 
+  // // Margin and Equity Impacts Before Order Triggers
+  // std::string initMarginBefore;
+  // std::string maintMarginBefore;
+  // std::string equityWithLoanBefore;
+  // 
+  // // Margin and Equity Change Impacts
+  // std::string initMarginChange;
+  // std::string maintMarginChange;
+  // std::string equityWithLoanChange;
+  // 
+  // // Margin and Equity Impacts Expected After Execution
+  // std::string initMarginAfter;
+  // std::string maintMarginAfter;
+  // std::string equityWithLoanAfter;
+  // 
+  // // Commission Metrics
+  // double commission;
+  // double minCommission;
+  // double maxCommission;
+  // std::string commissionCurrency;
+  // 
+  // // Order Feedback and Diagnostics
+  // std::string warningText;
+  // std::string completedTime;
+  // std::string completedStatus;
+  // 
+  // // API v10.33+ Additions
+  // std::string rejectReason;
+  // std::string suggestedSize;
+  // 
+
+  // long conId;
+  // std::string symbol;
+  // std::string secType;
+  // std::string lastTradeDateOrContractMonth;
+  // double strike;
+  // std::string right;
+  // std::string multiplier;
+  // std::string exchange;
+  // std::string primaryExch;
+  // std::string currency;
+  // std::string localSymbol;
+  // std::string tradingClass;
+  // bool includeExpired;
+  // std::string secIdType; // CUSIP, ISIN, etc.
+  // std::string secId;
+  // std::string comboLegsDescription;
+
+
+  //
+
+
+
+  // order.action = "BUY";             // "BUY" or "SELL"
+  // order.totalQuantity = 100;        // Number of shares/contracts (Decimal type in newer APIs)
+  // order.orderType = "LMT";          // "LMT", "MKT", "STP", "STP LMT", etc.
+  // order.lmtPrice = 150.50;          // Required for Limit orders
+  // order.auxPrice = 0.0;             // Used for Stop prices
+  // order.tif = "DAY";                // Time in Force: "DAY", "GTC", "IOC", etc.
+  // order.transmit = true;            // true sends it immediately; false holds it for a bracket
+  //
+  // order.customerId;
+  // order.type;
+  // order.side;
+  // order.status;
+  // order.price;
+  // order.quantity;
+  // order.filledQuantity;
+  // order.timestamp;
+
+
+  // order.getOrderId();
+  // order.getCustomerId() ;
+  // order.getType();
+  // order.getSide();
+  // order.getStatus();
+  // order.getPrice();
+  // order.getPrice();
+  // order.getFilledQuantity();
+  // std::string getOrderId() const { return orderId; }
+  // std::string getCustomerId() const { return customerId; }
+  // OrderType getType() const { return type; }
+  // OrderSide getSide() const { return side; }
+  // OrderStatus getStatus() const { return status; }
+  // double getPrice() const { return price; }
+  // int getQuantity() const { return quantity; }
+  // int getFilledQuantity() const { return filledQuantity; }
+
+
+
 
   //  std::cout << "here are the open orders:" << orderId << std::endl;
 
@@ -2169,13 +2325,15 @@ void TestCppClient::openOrder(int orderId, const Contract& contract, const Order
   //Position: %s, MarketPrice: %s, MarketValue: %s, AverageCost: %s, UnrealizedPNL: %s, RealizedPNL: %s, AccountName: %s\n",
 
 }
+
 void TestCppClient::openOrderEnd() {
-  req_open_oder_cond_var_trigger_ = true;
+  req_open_oder_cond_var_trigger_ = {true};
   req_open_oder_end_cond_var_.notify_one();
   std::cerr << "open order ends" << std::endl;
 }
 
 void TestCppClient::winError( const std::string& str, int lastError) {}
+
 void TestCppClient::connectionClosed() {
   printf( "Connection Closed\n");
 }
@@ -2785,7 +2943,6 @@ void TestCppClient::commissionAndFeesReport( const CommissionAndFeesReport& comm
 void TestCppClient::print_position_details() {
 
 
-
   // fmt::print("{}","Printing position details!");
   m_pClient->reqOpenOrders();
   std::cout << "waiting on open order trigger" << std::endl;
@@ -2796,6 +2953,44 @@ void TestCppClient::print_position_details() {
   req_open_oder_cond_var_trigger_ = req_open_oder_cond_var_trigger_default_;
 
   std::cout << "Received open order trigger" << std::endl;
+  std::vector<std::string> open_orders;
+  for(const auto& order: open_orders_) {
+    const auto& asset = order.first;
+    open_orders.emplace_back(asset);
+
+  }
+
+  open_orders_.clear();
+
+
+
+  // open_orders_.insert(element);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   //  std::unique_lock<std::mutex> lock_open_order(req_open_oder_end_mtx_);
 
@@ -2808,7 +3003,18 @@ void TestCppClient::print_position_details() {
   account_summary_.clear();
   m_pClient->reqAccountSummary(account_summary_order_id, "All", AccountSummaryTags::getAllTags());
 
-  std::cout << "stop requesting account summary:" << std::endl;
+  //  std::unique_lock<std::mutex> account_update_lock(account_update_end_mtx_);
+  //  // 2. Wait until the predicate condition evaluates to true
+  //  account_update_end_cond_var_.wait(account_update_lock, [] { return account_update_end_cond_var_trigger_; });
+  //
+  //  // std::cout << "ACCOUNT UPDATE FINISHED! " << std::endl;
+  //  // //
+  //  // // reset the game!
+  account_update_end_cond_var_trigger_ = account_update_end_cond_var_trigger_default_;
+  //
+
+  // std::cout << "stop requesting account summary:" << std::endl;
+
 
 
 
@@ -2857,10 +3063,10 @@ void TestCppClient::print_position_details() {
 
   std::set<std::string> long_positions;
   std::set<std::string> short_positions;
+  std::set<std::string> active_positions;
   std::set<std::string> open_positions;
   std::set<std::string> open_filled_positions;
 
-  current_account_state_.print();
 
   std::get<0>(price_request_counter_).clear();
   std::get<0>(std::get<1>(std::get<1>(price_request_counter_))) = {0};
@@ -2875,7 +3081,20 @@ void TestCppClient::print_position_details() {
     for(auto position:position_details_){
       if(::fabs(position.second.num_positions_) > 0) 
         std::get<0>(std::get<1>(price_request_counter_)) += 1;
+
     }
+
+    percent_deviation_threshold_map_.clear();
+    //initialize the ticker map
+    for(auto position:position_details_){
+
+      auto ticker = position.first;
+      percent_deviation_threshold_map_[ticker] = percent_deviation_threshold_map_default_threshold_;
+      if(! ::fabs(position.second.num_positions_) > 0) 
+        open_positions.insert(ticker);
+    }
+
+
 
 
     std::get<0>(std::get<1>(std::get<1>(price_request_counter_))) = 0;
@@ -2896,6 +3115,8 @@ void TestCppClient::print_position_details() {
         current_price_list_[counter].last_price_ = {-1};
         current_price_list_[counter].bid_price_ = {-1};
         current_price_list_[counter].ask_price_ = {-1};
+        current_price_list_[counter].tick_size_.resize(AssetPrice::tick_size_field_max_length_);
+
 
 
       }
@@ -2930,12 +3151,46 @@ void TestCppClient::print_position_details() {
     fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
 
 
+     fmt::print("{:-<20}\n", ""); 
     std::map<std::string, AssetPrice> ticker_price_map;
 
     for(auto current_price:current_price_list_) {
       auto ticker = std::get<0>(price_request_counter_)[current_price.first];
       ticker_price_map[ticker] = current_price.second;
-      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << std::endl;
+      float bid_ask_delta = std::round((current_price.second.ask_price_ - current_price.second.bid_price_)*100.0f)/100.0f;
+      float bid_ask_delta_factor = std::round((bid_ask_delta/bid_ask_lowest_denominator_)*100.0f)/100.0f;
+
+      std::stringstream ss;
+      ss << std::fixed << std::setprecision(2) << bid_ask_delta;
+      ss >> bid_ask_delta;
+      ss.str("");
+
+
+        float bid_ask_percent = 100.0*(current_price.second.ask_price_ - current_price.second.bid_price_)/ current_price.second.bid_price_;
+        float bid_ask_percent_renormalized = bid_ask_percent*100.0f;
+
+
+
+
+      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << "(" << bid_ask_delta << "," << bid_ask_delta_factor << "," << bid_ask_percent << ")" << std::endl;
+
+      //      auto tick_size = current_price_list_[counter].tick_size_.resize(AssetPrice::tick_size_field_max_length_);
+
+      auto ticks_sizes = ticker_price_map[ticker].tick_size_;
+      std::cout << "size:";
+      for(int i =0; i< ticks_sizes.size();++i) {
+
+        if(ticks_sizes.at(i) > 0){
+          std::cout << "("<< i << "," << PURPLE << ticks_sizes.at(i) << RESET<< ")";
+          if(i != ticks_sizes.size() - 2)
+            std::cout << ",";
+        }
+
+      }
+
+      std::cout << std::endl;
+
+
     }
 
 
@@ -2960,14 +3215,11 @@ void TestCppClient::print_position_details() {
     std::cout << "############################################################"<< std::endl;
     //
     //    fmt::print(fg(fmt::color::violet), "Positions:\n");
-
     // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
     if(short_positions.size() > 0){
       fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "SHORTS:\n");
 
       for(const auto& position:short_positions) {
-
-
         const std::string& symbol = position;
         const auto position_float = position_details_[symbol].num_positions_ ;
         const auto average_cost_float = position_details_[symbol].average_cost_;
@@ -2999,8 +3251,17 @@ void TestCppClient::print_position_details() {
           fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
           float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
           if(percent_deviation > 0){
+            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET;
+            if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
+              std::cout << BRIGHT_BRICK_RED << "●" << RESET;
+            }else {
+              std::cout << GREEN << "●" << RESET;
 
-            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
+            }
+            std::cout << std::endl;
+
+
+
             // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
           }
           else {
@@ -3008,7 +3269,6 @@ void TestCppClient::print_position_details() {
 
           }
         }
-
       }
     }
 
@@ -3024,33 +3284,47 @@ void TestCppClient::print_position_details() {
         const auto average_cost_float = position_details_[symbol].average_cost_;
         auto total_position_cost = position_float*average_cost_float;
 
+        const auto& last_price = ticker_price_map[symbol].last_price_;
+        auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
+
+
+
+
+
         Contract contract;
         contract.symbol = symbol;
         contract.secType = "STK";
         contract.exchange = "SMART";
         contract.currency = "USD";
-
-
         //        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
         //        const int tickerId = *it;
 
         //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
 
-
         if(position_float > 0){
 
 
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), fmt::runtime("{}:"), symbol);
-          float percent_deviation = 100.0*(ticker_price_map[symbol].last_price_ - average_cost_float)/average_cost_float;
-
+          // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
+          float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
           if(percent_deviation < 0){
-            std::cout << RED << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << RESET << std::endl;
-          } else{
-            std::cout << GREEN << std::fixed<< std::setprecision(2) <<  static_cast<int>(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "):" <<  total_position_cost << RESET << std::endl;
+
+            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET ;
+
+            if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
+              std::cout << BRIGHT_BRICK_RED << "●" << RESET;
+            }else {
+              std::cout << GREEN << "●" << RESET;
+
+            }
+            std::cout << std::endl;
+
+            // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
+          }
+          else {
+            std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
 
           }
-
-
         }
       }
     }
@@ -3058,31 +3332,71 @@ void TestCppClient::print_position_details() {
     fmt::print(fg(fmt::color::red),"SORRY THERE IS NO AVAILABLE POSIITON TO PRINT\n");
   }
 
+  std::cout << account_summary_ << std::endl;
+
+  std::cout << BLUE << "OPEN ORDERS :" << RESET << std::endl;
+  fmt::print(fg(fmt::color::purple) | fmt::emphasis::bold,"{}\n",open_orders);
+
+
+  //    auto action =  order.action;
+  //    auto total_quantity = order.totalQuantity;
+  //    auto order_type = order.orderType;
+  //    auto limit_price = order.lmtPrice;
+  //    auto aux_price = order.auxPrice;
+  //    auto order_time_in_force =  order.tif;
+  //    auto order_transmit = order.transmit;
+  //
+  //    /////////////////////////////////////////////////////////////////
+  //    contract.conId;
+  //    contract.symbol;
+  //    contract.secType;
+  //    contract.lastTradeDateOrContractMonth;
+  //    contract.right;
+  //    contract.multiplier;
+  //    contract.exchange;
+  //    contract.currency;
+  //    contract.tradingClass;
+  //    contract.secIdType;
+  //    contract.secId;
+  //    contract.conId;
+  //    contract.conId;
+  //
+  //    /////////////////////////////////////////////////////////////////
+  //    orderState.initMarginBefore;
+  //    orderState.maintMarginBefore;
+  //    orderState.equityWithLoanBefore;
+  //
+  //    orderState.initMarginChange;
+  //    orderState.maintMarginChange;
+  //    orderState.equityWithLoanChange;
+  //
+  //    orderState.initMarginAfter;
+  //    orderState.maintMarginAfter;
+  //    orderState.equityWithLoanAfter;
+  //
+  //    // orderState.commission;
+  //    orderState.minCommissionAndFees;
+  //    orderState.maxCommissionAndFees;
+  //    orderState.warningText;
+  //    orderState.completedTime;
+  //    orderState.completedStatus;
+  //
+  //    orderState.rejectReason;
+  //    orderState.suggestedSize;
+  //
+
+
+
+
+
+
   //  std::cout << std::endl;
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
   //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
 
-  std::cout << "waiting for account update to finish" << std::endl;
+  //  std::cout << "waiting for account update to finish" << std::endl;
 
-  std::unique_lock<std::mutex> account_update_lock(account_update_end_mtx_);
-  // 2. Wait until the predicate condition evaluates to true
-  account_update_end_cond_var_.wait(account_update_lock, [] { return account_update_end_cond_var_trigger_; });
-
-
-
-
-  std::cout << "ACCOUNT UPDATE FINISHED! " << std::endl;
-
-  //
-  // reset the game!
-  account_update_end_cond_var_trigger_ = account_update_end_cond_var_trigger_default_;
-
-  std::cout << account_summary_ << std::endl;
-
-
-
-  m_pClient->cancelAccountSummary(account_summary_order_id);
-
+  //current_account_state_.print();
 }
 //! [position]
 void TestCppClient::position( const std::string& account, const Contract& contract, Decimal position, double avgCost) {
@@ -3156,7 +3470,18 @@ void TestCppClient::positionEnd() {
 //! [accountsummary]
 void TestCppClient::accountSummary( int reqId, const std::string& account, const std::string& tag, const std::string& value, const std::string& currency) {
   //  printf( "Acct Summary. ReqId: %d, Account: %s, Tag: %s, Value: %s, Currency: %s\n", reqId, account.c_str(), tag.c_str(), value.c_str(), currency.c_str());
-  account_summary_[tag] = ::atof(value.c_str()); 
+  double val = std::stod(value);
+
+  static short int local_precision = {2};
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(local_precision) << val;
+
+  float value_float = ::atof(stream.str().c_str());
+
+
+  value_float = std::round(value_float*100.0f)/100.0f;
+  //  value = std::stod(value.c_str()); 
+  account_summary_[tag] = value_float;
 
 }
 //! [accountsummary]
@@ -3164,9 +3489,11 @@ void TestCppClient::accountSummary( int reqId, const std::string& account, const
 //! [accountsummaryend]
 void TestCppClient::accountSummaryEnd( int reqId) {
   //  printf( "AccountSummaryEnd. Req Id: %d\n", reqId);
+  //
+
+  m_pClient->cancelAccountSummary(reqId);
   account_update_end_cond_var_trigger_ = true;
   account_update_end_cond_var_.notify_one();
-
 }
 //! [accountsummaryend]
 
@@ -3658,38 +3985,38 @@ void TestCppClient::contractDataProtoBuf(const protobuf::ContractData& contractD
 void TestCppClient::bondContractDataProtoBuf(const protobuf::ContractData& contractDataProto) {}
 void TestCppClient::contractDataEndProtoBuf(const protobuf::ContractDataEnd& contractDataEndProto) {}
 void TestCppClient::tickPriceProtoBuf(const protobuf::TickPrice& tickPriceProto) {
-  printf("Tick Price: %s\n", tickPriceProto.ShortDebugString().c_str());
+  // printf("Tick Price: %s\n", tickPriceProto.ShortDebugString().c_str());
 }
 void TestCppClient::tickSizeProtoBuf(const protobuf::TickSize& tickSizeProto) {
-  printf("Tick Size: %s\n", tickSizeProto.ShortDebugString().c_str());
+  // printf("Tick Size: %s\n", tickSizeProto.ShortDebugString().c_str());
 }
 void TestCppClient::tickOptionComputationProtoBuf(const protobuf::TickOptionComputation& tickOptionComputationProto) {
-  printf("Tick Option Computation: %s\n", tickOptionComputationProto.ShortDebugString().c_str());
+  // printf("Tick Option Computation: %s\n", tickOptionComputationProto.ShortDebugString().c_str());
 }
 void TestCppClient::tickGenericProtoBuf(const protobuf::TickGeneric& tickGenericProto) {
-  printf("Tick Generic: %s\n", tickGenericProto.ShortDebugString().c_str());
+  //  printf("Tick Generic: %s\n", tickGenericProto.ShortDebugString().c_str());
 }
 void TestCppClient::tickStringProtoBuf(const protobuf::TickString& tickStringProto) {
-  printf("Tick String: %s\n", tickStringProto.ShortDebugString().c_str());
+  //  printf("Tick String: %s\n", tickStringProto.ShortDebugString().c_str());
 }
 void TestCppClient::tickSnapshotEndProtoBuf(const protobuf::TickSnapshotEnd& tickSnapshotEndProto) {
-  printf("Tick Snapshot End: %s\n", tickSnapshotEndProto.ShortDebugString().c_str());
+  // printf("Tick Snapshot End: %s\n", tickSnapshotEndProto.ShortDebugString().c_str());
 }
 void TestCppClient::updateMarketDepthProtoBuf(const protobuf::MarketDepth& marketDepthProto) {}
 void TestCppClient::updateMarketDepthL2ProtoBuf(const protobuf::MarketDepthL2& marketDepthL2Proto) {}
 void TestCppClient::marketDataTypeProtoBuf(const protobuf::MarketDataType& marketDataTypeProto) {}
 void TestCppClient::tickReqParamsProtoBuf(const protobuf::TickReqParams& tickReqParamsProto) {
-  std::ostringstream oss;
-  if (tickReqParamsProto.has_reqid()) oss << "Ticker Id: " << tickReqParamsProto.reqid() << ", ";
-  if (tickReqParamsProto.has_mintick()) oss << " MinTick: " << tickReqParamsProto.mintick() << ", ";
-  if (tickReqParamsProto.has_bboexchange()) {
-    oss << "BboExchange: " << tickReqParamsProto.bboexchange() << ", ";
-    m_bboExchange = tickReqParamsProto.bboexchange();
-  }
-  if (tickReqParamsProto.has_snapshotpermissions()) oss << "SnapshotPermissions: " << tickReqParamsProto.snapshotpermissions() << ", ";
-  if (tickReqParamsProto.has_lastpriceprecision()) oss << "LastPricePrecision: " << tickReqParamsProto.lastpriceprecision() << ", ";
-  if (tickReqParamsProto.has_lastsizeprecision()) oss << "lastSizePrecision: " << tickReqParamsProto.lastsizeprecision();
-  printf("Tick Req Params. %s\n", oss.str().c_str());
+  //  std::ostringstream oss;
+  //  if (tickReqParamsProto.has_reqid()) oss << "Ticker Id: " << tickReqParamsProto.reqid() << ", ";
+  //  if (tickReqParamsProto.has_mintick()) oss << " MinTick: " << tickReqParamsProto.mintick() << ", ";
+  //  if (tickReqParamsProto.has_bboexchange()) {
+  //    oss << "BboExchange: " << tickReqParamsProto.bboexchange() << ", ";
+  //    m_bboExchange = tickReqParamsProto.bboexchange();
+  //  }
+  //  if (tickReqParamsProto.has_snapshotpermissions()) oss << "SnapshotPermissions: " << tickReqParamsProto.snapshotpermissions() << ", ";
+  //  if (tickReqParamsProto.has_lastpriceprecision()) oss << "LastPricePrecision: " << tickReqParamsProto.lastpriceprecision() << ", ";
+  //  if (tickReqParamsProto.has_lastsizeprecision()) oss << "lastSizePrecision: " << tickReqParamsProto.lastsizeprecision();
+  //  printf("Tick Req Params. %s\n", oss.str().c_str());
 }
 void TestCppClient::updateAccountValueProtoBuf(const protobuf::AccountValue& accountValueProto) {}
 void TestCppClient::updatePortfolioProtoBuf(const protobuf::PortfolioValue& portfolioValueProto) {}
@@ -3816,6 +4143,19 @@ std::map<int, AssetPrice> TestCppClient::current_price_list_;
 Json::Value CurrentAccountState::account_update_state_;
 Json::Value TestCppClient::account_summary_;
 
+std::mutex TestCppClient::open_order_update_lock_mtx_;
+
+
+int TestCppClient::threadpool_size_ = {16};
+
+//    ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> TestCppClient::threadpool_priority_;
+CurrentPositionsActions::CurrentPositionsActions() {
+
+}
+
+CurrentPositionsActions::~CurrentPositionsActions() {
+
+}
 
 TmuxManagement TestCppClient::tmux_management;
 
@@ -3886,9 +4226,7 @@ TmuxManagement::~TmuxManagement() {
 template<typename T>
 void TmuxManagement::send_msg_to_last_ttys(const T&& msg, int index) {
 
-
-  auto the_TMUX_warrior = tmux_ttys_.at(index);
-
+  auto the_TMUX_warrior = tmux_ttys_.at(index); // Warrior is where teh actual message is sent
   std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_TMUX_warrior;
   std::cout << command << std::endl;
   ::exec(command);
