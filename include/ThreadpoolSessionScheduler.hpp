@@ -113,7 +113,7 @@ public:
     DailyScheduledTask(ThreadPoolSessionScheduler& pool,
                         int hour, int minute, int second,
                         std::function<void()> task,
-                        bool catch_up_if_missed = true)
+                        bool catch_up_if_missed = false)
         : pool_(pool)
         , hour_(hour), minute_(minute), second_(second)
         , task_(std::move(task))

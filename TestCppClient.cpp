@@ -3151,6 +3151,10 @@ void TestCppClient::print_position_details() {
 
     fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
 
+    auto now_ = std::chrono::system_clock::now();
+    auto local_time_ = std::chrono::zoned_time{std::chrono::current_zone(), now_};
+
+    std::cout << std::format("⏰: {:%F %T}\n", local_time_);
 
     fmt::print(fmt::emphasis::bold | fg(fmt::color::teal) | bg(fmt::color::black),"{:-<100}\n", ""); 
     std::map<std::string, AssetPrice> ticker_price_map;
@@ -3213,12 +3217,17 @@ void TestCppClient::print_position_details() {
       total_VaR += ::fabs(position.second.num_positions_ * position.second.average_cost_);
     }
 
+    auto now = std::chrono::system_clock::now();
+    auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
+
+    std::cout << std::format("⏰: {:%F %T}\n", local_time);
     std::cout << "############################################################"<< std::endl;
     //
     //    fmt::print(fg(fmt::color::violet), "Positions:\n");
     // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
     if(short_positions.size() > 0){
       fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "SHORTS:\n");
+
 
       for(const auto& position:short_positions) {
         const std::string& symbol = position;
@@ -3251,6 +3260,74 @@ void TestCppClient::print_position_details() {
           // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
           fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
           float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
+          float limit_price_percent_above_current_level_ = {0.005};
+          // PROFIT TAKING
+          if(!profit_taking_engagements_activation_[symbol]) {
+            if(last_price < average_cost_float) {
+              if(percent_deviation > profit_percent_threshold_) {
+                float total_asset_value = last_price*position_float;
+                float profit =  (total_position_cost - total_asset_value);
+                if(profit > profit_minimum_threshold_) {
+                  // Profit taking is now activated...placing order with limit price
+                  float limit_price = last_price*(1.0 + limit_price_percent_above_current_level_) ;
+
+                  // schedule the task
+                  auto fut = threadpool_priority_->queue(true,[this, symbol,limit_price, position_float]()->void{ 
+                      profit_taking_engagements_activation_[symbol] = true;
+                      int num_allowed_iterations = 10;
+                      int iteration = 0;
+                      //do
+                      {
+                      std::cout << RED << " ENQUED PROFIT TAKING ACTIVITY " << symbol << RESET << std::endl;
+
+
+                      Contract contract;
+                      contract.symbol = symbol;
+                      contract.secType = "STK";
+                      contract.exchange = "SMART";
+                      contract.currency = "USD";
+
+                      // Define the limit order
+                      Order order;
+                      order.action = "SELL";          // "BUY" or "SELL"
+                      order.orderType = "LMT";       // Limit order type
+                      order.totalQuantity = position_float;     // Number of shares
+                      order.lmtPrice = limit_price;       // Maximum price to pay
+
+                      // Submit the order via the client socket
+                      // m_orderId should be fetched from nextValidId callback
+                      auto orderId = m_orderId++;
+                      std::cout << "order placed!" << std::endl;
+                      m_pClient->placeOrder(orderId, contract, order);
+                      std::cout << "order placed!" << std::endl;
+
+                      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+                      if(++iteration == num_allowed_iterations) {
+                        profit_taking_activity_finished_[symbol] = true;
+                        std::cout << RED << " PROFIT HAS BEEN TAKEN for " << symbol << RESET << std::endl;
+                      }
+                      }
+                     // while(!profit_taking_activity_finished_[symbol]);
+
+                      profit_taking_engagements_activation_[symbol] = false;
+
+                  });
+
+                  // fut.get();
+
+
+                  //threadpool_priority_->queue(true, complexTask, ITERATIONS).get_future()
+
+                }
+
+              }
+
+            }
+          }else {
+            std::cout << "PROFIT TAKING FOR " << symbol << " has already been activated" << std::endl;
+          }
+
           if(percent_deviation > 0){
             std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET;
             if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
@@ -4097,9 +4174,10 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:00 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
-
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4109,9 +4187,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:15 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4122,9 +4202,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 4:00 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4134,9 +4216,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:00 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4147,9 +4231,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:45 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4159,9 +4245,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:55 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4174,9 +4262,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 9:15 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4188,9 +4278,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 10:00 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4201,9 +4293,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 12:00 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4213,9 +4307,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 2:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4230,9 +4326,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:30 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4245,9 +4343,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:45 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4258,9 +4358,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:48 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4271,9 +4373,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:50 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4285,9 +4389,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:55 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4299,9 +4405,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 4:00 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4313,9 +4421,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 4:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4326,9 +4436,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 5:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4338,9 +4450,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 6:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4350,9 +4464,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 7:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4363,9 +4479,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 7:45 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4376,9 +4494,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:01 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4389,9 +4509,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:15 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4402,9 +4524,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 8:30 PM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4415,9 +4539,11 @@ void TestCppClient::initiate_task_schedulers() {
       std::cout << "[worker] Daily 3:45 AM task running on pool.\n";
       bool is_terminated = false;
       while(!is_terminated) {
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
 
       std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
 
       };
       // ... do the actual work here ...
@@ -4494,6 +4620,11 @@ Json::Value CurrentAccountState::account_update_state_;
 Json::Value TestCppClient::account_summary_;
 
 std::mutex TestCppClient::open_order_update_lock_mtx_;
+
+
+bool TestCppClient::should_take_profit_ = {should_take_profit_default_};
+float TestCppClient::profit_minimum_threshold_ = {profit_minimum_threshold_default_};
+float TestCppClient::profit_percent_threshold_ = {profit_percent_threshold_default_};
 
 
 bool TestCppClient::should_initiate_task_schedulers_ = {should_initiate_task_schedulers_default_};

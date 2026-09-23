@@ -495,7 +495,6 @@ class TestCppClient : public EWrapper {
 
     /// AUTO ACTION MODES
     //   std::set<CurrentPositionsActions> current_positions_action_modes_; 
-
     //    ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> threadpool_priority_(12);
 
     static std::unique_ptr<ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>> threadpool_priority_;
@@ -508,10 +507,25 @@ class TestCppClient : public EWrapper {
     static std::unique_ptr<ThreadPoolSessionScheduler> scheduler_threadpool_;
 
 
-  static bool constexpr should_initiate_task_schedulers_default_ = {true};
-  static bool should_initiate_task_schedulers_;
+    static bool constexpr should_initiate_task_schedulers_default_ = {true};
+    static bool should_initiate_task_schedulers_;
   public:
-void  initiate_task_schedulers();
+    void  initiate_task_schedulers();
+  private:
+
+
+    static bool should_take_profit_;
+    static bool constexpr should_take_profit_default_ = {true};
+
+    static float profit_minimum_threshold_;
+    static float constexpr profit_minimum_threshold_default_ = {50.0};
+
+    static float profit_percent_threshold_;
+    static float constexpr profit_percent_threshold_default_ = {0.05};
+
+    std::map<std::string,std::atomic<bool>> profit_taking_engagements_activation_;
+
+    std::map<std::string,std::atomic<bool>> profit_taking_activity_finished_;
 
 
 };
