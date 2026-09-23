@@ -176,6 +176,7 @@ struct CurrentAccountState {
 
   static Json::Value account_update_state_;
 
+
   void print() const;
 
 };
@@ -308,6 +309,18 @@ struct CurrentPositionsActions {
   float priority;
   static float constexpr priority_default = {100.0};
   static float constexpr action_default = {100.0};
+};
+
+
+struct PortfolioSnapshot {
+    Contract contract;
+    Decimal position;
+    double marketPrice;
+    double marketValue;
+    double averageCost;
+    double unrealizedPNL;
+    double realizedPNL;
+    std::string accountName;
 };
 
 //! [ewrapperimpl]
@@ -524,6 +537,7 @@ class TestCppClient : public EWrapper {
     static float constexpr profit_percent_threshold_default_ = {0.05};
 
     std::map<std::string,std::atomic<bool>> profit_taking_engagements_activation_;
+    std::map<std::string,std::atomic<bool>> profit_taking_already_placed_;
 
     std::map<std::string,std::atomic<bool>> profit_taking_activity_finished_;
 
@@ -534,14 +548,24 @@ class TestCppClient : public EWrapper {
 
     std::set<std::string> tracked_assets_;
     std::vector<int> tracked_assets_IDs_;
-
     std::vector<std::future<void>> tracked_assets_IDs_futures_;
 
     std::map<std::string, int> tracked_assets_IDs_symbol_map_;
     std::map<int, std::string> tracked_assets_IDs_symbol_map_inverse_;
+    static float constexpr limit_price_percent_above_current_level_ = {0.005};
+  public:
+    void account_summary();
+    void trigger_account_update();
 
-      static float constexpr limit_price_percent_above_current_level_ = {0.005};
+    bool has_initial_account_update_download_completed_;
+    static bool constexpr has_initial_account_update_download_completed_default_ = {false};
 
+
+  private:
+    Json::Value account_update_state_live_;
+
+    boost::circular_buffer<PortfolioSnapshot> portfolio_update_trajectory_;
+   static int constexpr portfolio_update_trajectory_size_ = {5000};
 };
 
 

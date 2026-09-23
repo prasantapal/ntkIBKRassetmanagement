@@ -68,6 +68,10 @@ const int SLEEP_BETWEEN_PINGS = 30; // seconds
 
 
 
+double roundToTick(double price, double tickSize) {
+    return std::round(price / tickSize) * tickSize;
+}
+
 
 void CurrentAccountState::ctor_helpers() {
   SMA_ = SMA_default_;
@@ -2342,7 +2346,11 @@ void TestCppClient::connectionClosed() {
 //! [updateaccountvalue]
 void TestCppClient::updateAccountValue(const std::string& key, const std::string& val,
     const std::string& currency, const std::string& accountName) {
+
+  account_update_state_live_[key] = val;
+
   // printf("UpdateAccountValue. Key: %s, Value: %s, Currency: %s, Account Name: %s\n", key.c_str(), val.c_str(), currency.c_str(), accountName.c_str());
+
 
   std::cout << "UPDATING ACCOUNT VALUE:" << std::endl;
 
@@ -2587,10 +2595,39 @@ void TestCppClient::updateAccountValue(const std::string& key, const std::string
 }
 //! [updateaccountvalue]
 
+
+
 //! [updateportfolio]
-void TestCppClient::updatePortfolio(const Contract& contract, Decimal position,
-    double marketPrice, double marketValue, double averageCost,
-    double unrealizedPNL, double realizedPNL, const std::string& accountName){
+void TestCppClient::updatePortfolio(
+    const Contract& contract, 
+    Decimal position,
+    double marketPrice, 
+    double marketValue, 
+    double averageCost,
+    double unrealizedPNL, 
+    double realizedPNL, 
+    const std::string& accountName){
+
+
+PortfolioSnapshot portfolio_snapshot;
+
+portfolio_snapshot.contract = contract;
+portfolio_snapshot.position = position;
+portfolio_snapshot.marketPrice = marketPrice;
+portfolio_snapshot.marketValue = marketValue;
+portfolio_snapshot.averageCost = averageCost;
+portfolio_snapshot.unrealizedPNL = unrealizedPNL;
+portfolio_snapshot.realizedPNL = realizedPNL;
+portfolio_snapshot.accountName = accountName;
+
+portfolio_update_trajectory_.push_back(portfolio_snapshot);
+
+
+
+
+
+
+
   //printf("UpdatePortfolio. %s, %s @ %s: Position: %s, MarketPrice: %s, MarketValue: %s, AverageCost: %s, UnrealizedPNL: %s, RealizedPNL: %s, AccountName: %s\n",
   //    (contract.symbol).c_str(), (contract.secType).c_str(), (contract.exchange).c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(),
   //    Utils::doubleMaxString(marketPrice).c_str(), Utils::doubleMaxString(marketValue).c_str(), Utils::doubleMaxString(averageCost).c_str(),
@@ -2607,6 +2644,13 @@ void TestCppClient::updateAccountTime(const std::string& timeStamp) {
 //! [accountdownloadend]
 void TestCppClient::accountDownloadEnd(const std::string& accountName) {
   printf( "Account download finished: %s\n", accountName.c_str());
+  has_initial_account_update_download_completed_ = {true};
+
+  std::cout << "account_update_state_live:" << std::endl;
+
+  std::cout << account_update_state_live_ << std::endl;
+
+  getchar();
 
   //request_mutex_.unlock();
 }
@@ -2940,6 +2984,21 @@ void TestCppClient::commissionAndFeesReport( const CommissionAndFeesReport& comm
   printf( "CommissionAndFeesReport. %s - %s %s RPNL %s\n", commissionAndFeesReport.execId.c_str(), Utils::doubleMaxString(commissionAndFeesReport.commissionAndFees).c_str(), commissionAndFeesReport.currency.c_str(), Utils::doubleMaxString(commissionAndFeesReport.realizedPNL).c_str());
 }
 //! [commissionandfeesreport]
+void TestCppClient::account_summary() {
+  auto account_summary_order_id = m_orderId++;
+  std::cout << "requesting account summary:" << std::endl;
+  account_summary_.clear();
+  m_pClient->reqAccountSummary(account_summary_order_id, "All", AccountSummaryTags::getAllTags());
+  std::unique_lock<std::mutex> account_update_lock(account_update_end_mtx_);
+  // 2. Wait until the predicate condition evaluates to true
+  //  account_update_end_cond_var_.wait(account_update_lock, [] { return account_update_end_cond_var_trigger_; });
+  //
+  //  // std::cout << "ACCOUNT UPDATE FINISHED! " << std::endl;
+  //  // //
+  //  // // reset the game!
+  account_update_end_cond_var_trigger_ = account_update_end_cond_var_trigger_default_;
+
+}
 
 void TestCppClient::print_position_details() {
 
@@ -2960,7 +3019,6 @@ void TestCppClient::print_position_details() {
     open_orders.emplace_back(asset);
 
   }
-
   open_orders_.clear();
 
 
@@ -2970,48 +3028,11 @@ void TestCppClient::print_position_details() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   //  std::unique_lock<std::mutex> lock_open_order(req_open_oder_end_mtx_);
 
 
 
   // m_pClient->reqAccountUpdates(false, ""); 
-  auto account_summary_order_id = m_orderId++;
-
-  std::cout << "requesting account summary:" << std::endl;
-  account_summary_.clear();
-  m_pClient->reqAccountSummary(account_summary_order_id, "All", AccountSummaryTags::getAllTags());
-
-  //  std::unique_lock<std::mutex> account_update_lock(account_update_end_mtx_);
-  //  // 2. Wait until the predicate condition evaluates to true
-  //  account_update_end_cond_var_.wait(account_update_lock, [] { return account_update_end_cond_var_trigger_; });
-  //
-  //  // std::cout << "ACCOUNT UPDATE FINISHED! " << std::endl;
-  //  // //
-  //  // // reset the game!
-  account_update_end_cond_var_trigger_ = account_update_end_cond_var_trigger_default_;
   //
 
   // std::cout << "stop requesting account summary:" << std::endl;
@@ -3123,1532 +3144,264 @@ void TestCppClient::print_position_details() {
       }
     }
 
-for(const auto& position:position_details_) {
-      if(::fabs(position.second.num_positions_) > 0 ) 
+    profit_taking_engagements_activation_.clear();
+
+
+    for(const auto& position:position_details_) {
+      if(::fabs(position.second.num_positions_) > 0 ) {
         profit_taking_engagements_activation_[position.first] = true;
+        if(!profit_taking_already_placed_[position.first])
+          profit_taking_already_placed_[position.first] = false;
+      }
 
-}
-//   std::cout << "requesting prices for assets" << std::endl;
+    }
+    //   std::cout << "requesting prices for assets" << std::endl;
 
-std::unique_lock<std::mutex> lock_request_price(req_position_price_end_mtx_);
+    std::unique_lock<std::mutex> lock_request_price(req_position_price_end_mtx_);
 
-for(const auto& request:std::get<0>(price_request_counter_)) {
+    for(const auto& request:std::get<0>(price_request_counter_)) {
 
-  //       std::cout << "request id:" << request.first << " ticker:" << request.second << std::endl;
-  const std::string& symbol = request.second;
-  Contract contract;
-  contract.symbol = symbol;
-  contract.secType = "STK";
-  contract.exchange = "SMART";
-  contract.currency = "USD";
-  m_pClient->reqMktData(request.first, contract, "", true, false, TagValueListSPtr());
+      //       std::cout << "request id:" << request.first << " ticker:" << request.second << std::endl;
+      const std::string& symbol = request.second;
+      Contract contract;
+      contract.symbol = symbol;
+      contract.secType = "STK";
+      contract.exchange = "SMART";
+      contract.currency = "USD";
+      m_pClient->reqMktData(request.first, contract, "", true, false, TagValueListSPtr());
 
-}
-
-//    std::cout << "waiting on the price request completion" << std::endl;
-
-req_position_price_end_cond_var_.wait(lock_request_price, [] { return req_position_price_end_cond_var_trigger_; });
-
-req_position_price_end_cond_var_trigger_ = req_position_price_end_cond_var_trigger_default_;
-
-fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
-
-auto now_ = std::chrono::system_clock::now();
-auto local_time_ = std::chrono::zoned_time{std::chrono::current_zone(), now_};
-
-std::cout << std::format("⏰: {:%F %T}\n", local_time_);
-
-fmt::print(fmt::emphasis::bold | fg(fmt::color::teal) | bg(fmt::color::black),"{:-<100}\n", ""); 
-std::map<std::string, AssetPrice> ticker_price_map;
-
-for(auto current_price:current_price_list_) {
-  auto ticker = std::get<0>(price_request_counter_)[current_price.first];
-  ticker_price_map[ticker] = current_price.second;
-  float bid_ask_delta = std::round((current_price.second.ask_price_ - current_price.second.bid_price_)*100.0f)/100.0f;
-  float bid_ask_delta_factor = std::round((bid_ask_delta/bid_ask_lowest_denominator_)*100.0f)/100.0f;
-
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(2) << bid_ask_delta;
-  ss >> bid_ask_delta;
-  ss.str("");
-
-
-  float bid_ask_percent = 100.0*(current_price.second.ask_price_ - current_price.second.bid_price_)/ current_price.second.bid_price_;
-  float bid_ask_percent_renormalized = bid_ask_percent*100.0f;
-
-
-
-
-  std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << "(" << bid_ask_delta << "," << bid_ask_delta_factor << "," << bid_ask_percent_renormalized << ")" << std::endl;
-
-  //      auto tick_size = current_price_list_[counter].tick_size_.resize(AssetPrice::tick_size_field_max_length_);
-
-  auto ticks_sizes = ticker_price_map[ticker].tick_size_;
-  std::cout << "size:";
-  for(int i =0; i< ticks_sizes.size();++i) {
-
-    if(ticks_sizes.at(i) > 0){
-      std::cout << "("<< i << "," << PURPLE << ticks_sizes.at(i) << RESET<< ")";
-      if(i != ticks_sizes.size() - 2)
-        std::cout << ",";
     }
 
-  }
+    //    std::cout << "waiting on the price request completion" << std::endl;
 
-  std::cout << std::endl;
+    req_position_price_end_cond_var_.wait(lock_request_price, [] { return req_position_price_end_cond_var_trigger_; });
 
+    req_position_price_end_cond_var_trigger_ = req_position_price_end_cond_var_trigger_default_;
 
-}
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
 
+    auto now_ = std::chrono::system_clock::now();
+    auto local_time_ = std::chrono::zoned_time{std::chrono::current_zone(), now_};
 
+    std::cout << std::format("⏰: {:%F %T}\n", local_time_);
 
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::teal) | bg(fmt::color::black),"{:-<100}\n", ""); 
+    std::map<std::string, AssetPrice> ticker_price_map;
 
-float total_VaR = {0.0}; // value at risk! 
-int request_counter = {0};
-for(const auto& position:position_details_) {
+    for(auto current_price:current_price_list_) {
+      auto ticker = std::get<0>(price_request_counter_)[current_price.first];
+      ticker_price_map[ticker] = current_price.second;
+      float bid_ask_delta = std::round((current_price.second.ask_price_ - current_price.second.bid_price_)*100.0f)/100.0f;
+      float bid_ask_delta_factor = std::round((bid_ask_delta/bid_ask_lowest_denominator_)*100.0f)/100.0f;
 
-  const auto& ticker = position.first;
-
-  if(position.second.num_positions_ > 0) {
-    long_positions.insert(ticker);
-
-  }else if(::fabs(position.second.num_positions_)) {
-    short_positions.insert(ticker);
-  }
-
-  total_VaR += ::fabs(position.second.num_positions_ * position.second.average_cost_);
-}
-
-auto now = std::chrono::system_clock::now();
-auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
-
-std::cout << std::format("⏰: {:%F %T}\n", local_time);
-std::cout << "############################################################"<< std::endl;
-//
-//    fmt::print(fg(fmt::color::violet), "Positions:\n");
-// printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
-if(short_positions.size() > 0){
-  fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "SHORTS:\n");
+      std::stringstream ss;
+      ss << std::fixed << std::setprecision(2) << bid_ask_delta;
+      ss >> bid_ask_delta;
+      ss.str("");
 
 
-  for(const auto& position:short_positions) {
-    const std::string& symbol = position;
-    const auto position_float = position_details_[symbol].num_positions_ ;
-    const auto average_cost_float = position_details_[symbol].average_cost_;
-    auto total_position_cost = ::fabs(position_float*average_cost_float);
-    const auto& last_price = ticker_price_map[symbol].last_price_;
-    auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
+      float bid_ask_percent = 100.0*(current_price.second.ask_price_ - current_price.second.bid_price_)/ current_price.second.bid_price_;
+      float bid_ask_percent_renormalized = bid_ask_percent*100.0f;
 
 
-    //Contract contract;
-    //contract.symbol = symbol;
-    //contract.secType = "STK";
-    //contract.exchange = "SMART";
-    //contract.currency = "USD";
 
 
-    //auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
-    //const int tickerId = *it;
+      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << "(" << bid_ask_delta << "," << bid_ask_delta_factor << "," << bid_ask_percent_renormalized << ")" << std::endl;
 
-    // Request market data. The last two arguments are for regulatory snapshots and API generic tags.
-    // Setting snapshot to false gives a continuous live stream.
+      //      auto tick_size = current_price_list_[counter].tick_size_.resize(AssetPrice::tick_size_field_max_length_);
 
-    //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+      auto ticks_sizes = ticker_price_map[ticker].tick_size_;
+      std::cout << "size:";
+      for(int i =0; i< ticks_sizes.size();++i) {
 
-
-    // std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_value_;
-    // std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_size_;
-
-
-    if(::fabs(position_float) > 0) {
-      // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
-      float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
-      // PROFIT TAKING
-      if(!profit_taking_engagements_activation_[symbol]) {
-
-        std::cout << RED << "ENGAGING IN PROFIT TAKING ACTIVITIES" << RESET << std::endl;
-
-        if(last_price < average_cost_float) {
-          if(percent_deviation > profit_percent_threshold_) {
-            float total_asset_value = last_price*position_float;
-            float profit =  (total_position_cost - total_asset_value);
-            if(profit > profit_minimum_threshold_) {
-              // Profit taking is now activated...placing order with limit price
-              float limit_price = last_price*(1.0 + limit_price_percent_above_current_level_) ;
-
-              // schedule the task
-              auto fut = threadpool_priority_->queue(true,[this, symbol,limit_price, position_float]()->void{ 
-                  profit_taking_engagements_activation_[symbol] = true;
-                  int num_allowed_iterations = 10;
-                  int iteration = 0;
-                  //do
-                  {
-                  std::cout << RED << " ENQUED PROFIT TAKING ACTIVITY " << symbol << RESET << std::endl;
-
-
-                  Contract contract;
-                  contract.symbol = symbol;
-                  contract.secType = "STK";
-                  contract.exchange = "SMART";
-                  contract.currency = "USD";
-
-                  // Define the limit order
-                  Order order;
-                  order.action = "BUY";          // "BUY" or "SELL"
-                  order.orderType = "LMT";       // Limit order type
-                  order.totalQuantity = position_float;     // Number of shares
-                  order.lmtPrice = limit_price;       // Maximum price to pay
-
-                  // Submit the order via the client socket
-                  // m_orderId should be fetched from nextValidId callback
-                  auto orderId = m_orderId++;
-                  std::cout << "placing order" << std::endl;
-                  // m_pClient->placeOrder(orderId, contract, order);
-                  std::cout << "order placed!" << std::endl;
-
-                  std::this_thread::sleep_for(std::chrono::seconds(2));
-
-                  //if(++iteration == num_allowed_iterations) {
-                  //  profit_taking_activity_finished_[symbol] = true;
-                  //  std::cout << RED << " PROFIT HAS BEEN TAKEN for " << symbol << RESET << std::endl;
-                  //}
-                  }
-                  // while(!profit_taking_activity_finished_[symbol]);
-
-                  // profit_taking_engagements_activation_[symbol] = false;
-
-              });
-
-              // fut.get();
-
-
-              //threadpool_priority_->queue(true, complexTask, ITERATIONS).get_future()
-
-            }
-
-          }
-
+        if(ticks_sizes.at(i) > 0){
+          std::cout << "("<< i << "," << PURPLE << ticks_sizes.at(i) << RESET<< ")";
+          if(i != ticks_sizes.size() - 2)
+            std::cout << ",";
         }
-      }else {
-        std::cout << "PROFIT TAKING FOR " << symbol << " has already been activated" << std::endl;
-      }
-
-      if(percent_deviation > 0){
-        std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET;
-        if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
-          std::cout << BRIGHT_BRICK_RED << "●" << RESET;
-        }else {
-          std::cout << GREEN << "●" << RESET;
-
-        }
-        std::cout << std::endl;
-
-
-
-        // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
-      }
-      else {
-        std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
 
       }
+
+      std::cout << std::endl;
+
+
     }
-  }
-}
-
-if(long_positions.size() > 0){
-  fmt::print(fg(fmt::color::red) | bg(fmt::color::black), "LONGS:\n");
-
-  //  float num_positions_;
-  //  float average_cost_;
-  //
-  for(const auto& position:long_positions) {
-    const std::string& symbol = position;
-    const auto position_float = position_details_[symbol].num_positions_ ;
-    const auto average_cost_float = position_details_[symbol].average_cost_;
-    auto total_position_cost = position_float*average_cost_float;
-
-    const auto& last_price = ticker_price_map[symbol].last_price_;
-    auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
 
 
 
 
+    float total_VaR = {0.0}; // value at risk! 
+    int request_counter = {0};
+    for(const auto& position:position_details_) {
 
-    Contract contract;
-    contract.symbol = symbol;
-    contract.secType = "STK";
-    contract.exchange = "SMART";
-    contract.currency = "USD";
-    //        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
-    //        const int tickerId = *it;
+      const auto& ticker = position.first;
 
-    //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+      if(position.second.num_positions_ > 0) {
+        long_positions.insert(ticker);
 
-    if(position_float > 0){
-
-
-
-
-
-
-
-
-
-
-
-
-      // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
-      fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
-      float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
-
-
-
-      if(!profit_taking_engagements_activation_[symbol]) {
-        if(last_price > average_cost_float) {
-          if(percent_deviation > profit_percent_threshold_) {
-            float total_asset_value = last_price*position_float;
-            float profit =  (total_position_cost - total_asset_value);
-            if(profit > profit_minimum_threshold_) {
-              // Profit taking is now activated...placing order with limit price
-              float limit_price = last_price*(1.0 + limit_price_percent_above_current_level_) ;
-
-              // schedule the task
-              auto fut = threadpool_priority_->queue(true,[this, symbol,limit_price, position_float]()->void{ 
-                  profit_taking_engagements_activation_[symbol] = true;
-                  int num_allowed_iterations = 10;
-                  int iteration = 0;
-                  //do
-                  {
-                  std::cout << RED << " ENQUED PROFIT TAKING ACTIVITY " << symbol << RESET << std::endl;
-
-
-                  Contract contract;
-                  contract.symbol = symbol;
-                  contract.secType = "STK";
-                  contract.exchange = "SMART";
-                  contract.currency = "USD";
-
-                  // Define the limit order
-                  Order order;
-                  order.action = "SELL";          // "BUY" or "SELL"
-                  order.orderType = "LMT";       // Limit order type
-                  order.totalQuantity = position_float;     // Number of shares
-                  order.lmtPrice = limit_price;       // Maximum price to pay
-
-                  // Submit the order via the client socket
-                  // m_orderId should be fetched from nextValidId callback
-                  auto orderId = m_orderId++;
-                  std::cout << "placing order: " << symbol <<  " " << limit_price << "SELL" << std::endl;
-
-                  getchar();
-                  // m_pClient->placeOrder(orderId, contract, order);
-                  std::cout << "order placed!" << std::endl;
-
-                  std::this_thread::sleep_for(std::chrono::seconds(2));
-
-                  //if(++iteration == num_allowed_iterations) {
-                  //  profit_taking_activity_finished_[symbol] = true;
-                  //  std::cout << RED << " PROFIT HAS BEEN TAKEN for " << symbol << RESET << std::endl;
-                  //}
-                  }
-                  // while(!profit_taking_activity_finished_[symbol]);
-
-                  // profit_taking_engagements_activation_[symbol] = false;
-
-              });
-
-            }
-          }
-        }
+      }else if(::fabs(position.second.num_positions_)) {
+        short_positions.insert(ticker);
       }
 
-              if(percent_deviation < 0){
+      total_VaR += ::fabs(position.second.num_positions_ * position.second.average_cost_);
+    }
 
-                std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET ;
+    auto now = std::chrono::system_clock::now();
+    auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
 
-                if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
-                  std::cout << BRIGHT_BRICK_RED << "●" << RESET;
-                }else {
-                  std::cout << GREEN << "●" << RESET;
+    std::cout << std::format("⏰: {:%F %T}\n", local_time);
+    std::cout << "############################################################"<< std::endl;
+    //
+    //    fmt::print(fg(fmt::color::violet), "Positions:\n");
+    // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
+    if(short_positions.size() > 0){
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "SHORTS:\n");
+
+
+      for(const auto& position:short_positions) {
+        const std::string& symbol = position;
+        const auto position_float = position_details_[symbol].num_positions_ ;
+        const auto average_cost_float = position_details_[symbol].average_cost_;
+        auto total_position_cost = ::fabs(position_float*average_cost_float);
+        const auto& last_price = ticker_price_map[symbol].last_price_;
+        auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
+
+
+        //Contract contract;
+        //contract.symbol = symbol;
+        //contract.secType = "STK";
+        //contract.exchange = "SMART";
+        //contract.currency = "USD";
+
+
+        //auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        //const int tickerId = *it;
+
+        // Request market data. The last two arguments are for regulatory snapshots and API generic tags.
+        // Setting snapshot to false gives a continuous live stream.
+
+        //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+
+
+        // std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_value_;
+        // std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_size_;
+
+
+        if(::fabs(position_float) > 0) {
+          // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
+          float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
+          // PROFIT TAKING
+          if(profit_taking_engagements_activation_[symbol]) {
+
+            std::cout << RED << "ENGAGING IN PROFIT TAKING ACTIVITIES" << RESET << std::endl;
+
+            if(last_price < average_cost_float) {
+              if(percent_deviation > profit_percent_threshold_) {
+                float total_asset_value = last_price*position_float;
+                float profit =  (total_position_cost - total_asset_value);
+                if(profit > profit_minimum_threshold_) {
+                  std::cout << RED << "PROFIT CONDITION REACHED" << RESET << std::endl;
+                  // Profit taking is now activated...placing order with limit price
+                  float limit_price = last_price*(1.0 + limit_price_percent_above_current_level_) ;
+
+                  // schedule the task
+                  auto fut = threadpool_priority_->queue(true,[this, symbol,limit_price, position_float]()->void{ 
+                      profit_taking_engagements_activation_[symbol] = true;
+                      int num_allowed_iterations = 10;
+                      int iteration = 0;
+                      //do
+                      {
+                      std::cout << RED << " ENQUED PROFIT TAKING ACTIVITY " << symbol << RESET << std::endl;
+
+
+                      Contract contract;
+                      contract.symbol = symbol;
+                      contract.secType = "STK";
+                      contract.exchange = "SMART";
+                      contract.currency = "USD";
+
+                      // Define the limit order
+                      Order order;
+                      order.action = "BUY";          // "BUY" or "SELL"
+                      order.orderType = "LMT";       // Limit order type
+                      order.totalQuantity = position_float;     // Number of shares
+                      order.lmtPrice = limit_price;       // Maximum price to pay
+
+                      // Submit the order via the client socket
+                      // m_orderId should be fetched from nextValidId callback
+                      auto orderId = m_orderId++;
+                      std::cout << "placing order" << std::endl;
+                      m_pClient->placeOrder(orderId, contract, order);
+                      std::cout << "order placed!" << std::endl;
+
+                      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+                      //if(++iteration == num_allowed_iterations) {
+                      //  profit_taking_activity_finished_[symbol] = true;
+                      //  std::cout << RED << " PROFIT HAS BEEN TAKEN for " << symbol << RESET << std::endl;
+                      //}
+                      }
+                      // while(!profit_taking_activity_finished_[symbol]);
+
+                      // profit_taking_engagements_activation_[symbol] = false;
+
+                  });
+
+                  // fut.get();
+
+
+                  //threadpool_priority_->queue(true, complexTask, ITERATIONS).get_future()
 
                 }
-                std::cout << std::endl;
-
-                // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
-              }
-              else {
-                std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
 
               }
+
             }
+          }else {
+            std::cout << "PROFIT TAKING FOR " << symbol << " has already been finished" << std::endl;
+          }
+
+
+          if(percent_deviation > 0){
+            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET;
+            if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
+              std::cout << BRIGHT_BRICK_RED << "●" << RESET;
+            }else {
+              std::cout << GREEN << "●" << RESET;
+
+            }
+            std::cout << std::endl;
+
+
+
+            // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
+          }
+          else {
+            std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
+
           }
         }
-      }else {
-        fmt::print(fg(fmt::color::red),"SORRY THERE IS NO AVAILABLE POSIITON TO PRINT\n");
       }
+    }
 
-      std::cout << account_summary_ << std::endl;
+    if(long_positions.size() > 0){
+      fmt::print(fg(fmt::color::red) | bg(fmt::color::black), "LONGS:\n");
 
-      std::cout << BLUE << "OPEN ORDERS :" << RESET << std::endl;
-      fmt::print(fg(fmt::color::purple) | fmt::emphasis::bold,"{}\n",open_orders);
-
-
-      //    auto action =  order.action;
-      //    auto total_quantity = order.totalQuantity;
-      //    auto order_type = order.orderType;
-      //    auto limit_price = order.lmtPrice;
-      //    auto aux_price = order.auxPrice;
-      //    auto order_time_in_force =  order.tif;
-      //    auto order_transmit = order.transmit;
+      //  float num_positions_;
+      //  float average_cost_;
       //
-      //    /////////////////////////////////////////////////////////////////
-      //    contract.conId;
-      //    contract.symbol;
-      //    contract.secType;
-      //    contract.lastTradeDateOrContractMonth;
-      //    contract.right;
-      //    contract.multiplier;
-      //    contract.exchange;
-      //    contract.currency;
-      //    contract.tradingClass;
-      //    contract.secIdType;
-      //    contract.secId;
-      //    contract.conId;
-      //    contract.conId;
-      //
-      //    /////////////////////////////////////////////////////////////////
-      //    orderState.initMarginBefore;
-      //    orderState.maintMarginBefore;
-      //    orderState.equityWithLoanBefore;
-      //
-      //    orderState.initMarginChange;
-      //    orderState.maintMarginChange;
-      //    orderState.equityWithLoanChange;
-      //
-      //    orderState.initMarginAfter;
-      //    orderState.maintMarginAfter;
-      //    orderState.equityWithLoanAfter;
-      //
-      //    // orderState.commission;
-      //    orderState.minCommissionAndFees;
-      //    orderState.maxCommissionAndFees;
-      //    orderState.warningText;
-      //    orderState.completedTime;
-      //    orderState.completedStatus;
-      //
-      //    orderState.rejectReason;
-      //    orderState.suggestedSize;
-      //
+      for(const auto& position:long_positions) {
+        const std::string& symbol = position;
+        const auto position_float = position_details_[symbol].num_positions_ ;
+        const auto average_cost_float = position_details_[symbol].average_cost_;
+        auto total_position_cost = position_float*average_cost_float;
 
+        const auto& last_price = ticker_price_map[symbol].last_price_;
+        auto profit = ::fabs(position_float)*(average_cost_float  - last_price);
 
 
 
-
-
-      //  std::cout << std::endl;
-      //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
-      //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
-
-      //  std::cout << "waiting for account update to finish" << std::endl;
-
-      //current_account_state_.print();
-    }
-    //! [position]
-    void TestCppClient::position( const std::string& account, const Contract& contract, Decimal position, double avgCost) {
-
-      //std::cout << "getting positions:" << std::endl;
-      //printf("%f\n",position);
-
-      std::string position_str = DecimalFunctions::decimalStringToDisplay(position);
-
-      //  std::cout << "position_str:" << position_str << std::endl;
-
-      std::string symbol =  contract.symbol;
-      //   std::cout << "symbol:" << symbol << std::endl;
-      //   std::cout << "symbol size:" << symbol.size() << std::endl;
-      if(!symbol.empty()) {
-        std::string average_cost_str = Utils::doubleMaxString(avgCost);
-        float position_float = ::atof(position_str.c_str());
-        float average_cost_float = ::atof(average_cost_str.c_str());
-        float total_position_cost = position_float*average_cost_float;
-
-        // contract.size;
-
-        position_details_[symbol].num_positions_ = position_float;
-        position_details_[symbol].average_cost_ = average_cost_float;
-
-
-
-        //    if(!print_once_positions_) {
-        //      fmt::print(fg(fmt::color::violet)|bg(fmt::color::black), "Positions:\n");
-        //      print_once_positions_ = !print_once_positions_default_;
-        //    }
-        //
-        // fmt::print(bg(fmt::color::black),"{}","");
-
-        //     if(::fabs(position_float) > 0) {
-        //       // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
-        //       if(position_float < 0){
-        //   //      if(!print_once_positions_)
-        //   //        fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tSHORTS:\n");
-        //
-        //         fmt::print(fg(fmt::color::orange) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
-        //       }else {
-        //         //if(!print_once_positions_)
-        //         //  fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tLONGS:\n");
-        //         fmt::print(fg(fmt::color::olive) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
-        //       }
-        //     }
-        //
-
-
-      }
-
-    }
-    //! [position]
-
-    //! [positionend]
-    void TestCppClient::positionEnd() {
-      auto now = std::chrono::system_clock::now();
-      auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
-      std::cout << std::format("Local Time: {:%F %T}\n", local_time);
-      std::cout << "############################################################"<< std::endl;
-      req_position_end_cond_var_trigger_ = true;
-
-      req_position_end_cond_var_.notify_one();
-
-      //  print_once_positions_ = !print_once_positions_default_;
-      //  std::cout << "position End" << std::endl;
-    }
-    //! [positionend]
-
-    //! [accountsummary]
-    void TestCppClient::accountSummary( int reqId, const std::string& account, const std::string& tag, const std::string& value, const std::string& currency) {
-      //  printf( "Acct Summary. ReqId: %d, Account: %s, Tag: %s, Value: %s, Currency: %s\n", reqId, account.c_str(), tag.c_str(), value.c_str(), currency.c_str());
-      double val = std::stod(value);
-
-      static short int local_precision = {2};
-      std::ostringstream stream;
-      stream << std::fixed << std::setprecision(local_precision) << val;
-
-      float value_float = ::atof(stream.str().c_str());
-
-
-      value_float = std::round(value_float*100.0f)/100.0f;
-      //  value = std::stod(value.c_str()); 
-      account_summary_[tag] = value_float;
-
-    }
-    //! [accountsummary]
-
-    //! [accountsummaryend]
-    void TestCppClient::accountSummaryEnd( int reqId) {
-      //  printf( "AccountSummaryEnd. Req Id: %d\n", reqId);
-      //
-
-      m_pClient->cancelAccountSummary(reqId);
-      account_update_end_cond_var_trigger_ = true;
-      account_update_end_cond_var_.notify_one();
-    }
-    //! [accountsummaryend]
-
-    void TestCppClient::verifyMessageAPI( const std::string& apiData) {
-      printf("verifyMessageAPI: %s\n", apiData.c_str());
-    }
-
-    void TestCppClient::verifyCompleted( bool isSuccessful, const std::string& errorText) {
-      printf("verifyCompleted. IsSuccessful: %d - Error: %s\n", isSuccessful, errorText.c_str());
-    }
-
-    void TestCppClient::verifyAndAuthMessageAPI( const std::string& apiDatai, const std::string& xyzChallenge) {
-      printf("verifyAndAuthMessageAPI: %s %s\n", apiDatai.c_str(), xyzChallenge.c_str());
-    }
-
-    void TestCppClient::verifyAndAuthCompleted( bool isSuccessful, const std::string& errorText) {
-      printf("verifyAndAuthCompleted. IsSuccessful: %d - Error: %s\n", isSuccessful, errorText.c_str());
-      if (isSuccessful)
-        m_pClient->startApi();
-    }
-
-    //! [displaygrouplist]
-    void TestCppClient::displayGroupList( int reqId, const std::string& groups) {
-      printf("Display Group List. ReqId: %d, Groups: %s\n", reqId, groups.c_str());
-    }
-    //! [displaygrouplist]
-
-    //! [displaygroupupdated]
-    void TestCppClient::displayGroupUpdated( int reqId, const std::string& contractInfo) {
-      std::cout << "Display Group Updated. ReqId: " << reqId << ", Contract Info: " << contractInfo << std::endl;
-    }
-    //! [displaygroupupdated]
-
-    //! [positionmulti]
-    void TestCppClient::positionMulti( int reqId, const std::string& account,const std::string& modelCode, const Contract& contract, Decimal pos, double avgCost) {
-      printf("Position Multi. Request: %d, Account: %s, ModelCode: %s, Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", reqId, account.c_str(), modelCode.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(pos).c_str(), Utils::doubleMaxString(avgCost).c_str());
-    }
-    //! [positionmulti]
-
-    //! [positionmultiend]
-    void TestCppClient::positionMultiEnd( int reqId) {
-      printf("Position Multi End. Request: %d\n", reqId);
-    }
-    //! [positionmultiend]
-
-    //! [accountupdatemulti]
-    void TestCppClient::accountUpdateMulti( int reqId, const std::string& account, const std::string& modelCode, const std::string& key, const std::string& value, const std::string& currency) {
-      printf("AccountUpdate Multi. Request: %d, Account: %s, ModelCode: %s, Key, %s, Value: %s, Currency: %s\n", reqId, account.c_str(), modelCode.c_str(), key.c_str(), value.c_str(), currency.c_str());
-    }
-    //! [accountupdatemulti]
-
-    //! [accountupdatemultiend]
-    void TestCppClient::accountUpdateMultiEnd( int reqId) {
-      printf("Account Update Multi End. Request: %d\n", reqId);
-    }
-    //! [accountupdatemultiend]
-
-    //! [securityDefinitionOptionParameter]
-    void TestCppClient::securityDefinitionOptionalParameter(int reqId, const std::string& exchange, int underlyingConId, const std::string& tradingClass,
-        const std::string& multiplier, const std::set<std::string>& expirations, const std::set<double>& strikes) {
-      printf("Security Definition Optional Parameter. Request: %d, Exchange: %s, UnderlyingConId: %d, Trading Class: %s, Multiplier: %s, Expirations (%zu): ",
-          reqId, exchange.c_str(), underlyingConId, tradingClass.c_str(), multiplier.c_str(), expirations.size());
-
-      bool first = true;
-      for (const auto& exp : expirations) {
-        printf("%s%s", first ? "" : ", ", exp.c_str());
-        first = false;
-      }
-
-      printf(", Strikes (%zu): ", strikes.size());
-      first = true;
-      for (const auto& strike : strikes) {
-        printf("%s%.2f", first ? "" : ", ", strike);
-        first = false;
-      }
-      printf("\n");
-    }
-    //! [securityDefinitionOptionParameter]
-
-    //! [securityDefinitionOptionParameterEnd]
-    void TestCppClient::securityDefinitionOptionalParameterEnd(int reqId) {
-      printf("Security Definition Optional Parameter End. Request: %d\n", reqId);
-    }
-    //! [securityDefinitionOptionParameterEnd]
-
-    //! [softDollarTiers]
-    void TestCppClient::softDollarTiers(int reqId, const std::vector<SoftDollarTier> &tiers) {
-      printf("Soft dollar tiers (%zu):", tiers.size());
-
-      for (unsigned int i = 0; i < tiers.size(); i++) {
-        printSoftDollarTier(tiers[i]);
-      }
-    }
-    //! [softDollarTiers]
-
-    //! [familyCodes]
-    void TestCppClient::familyCodes(const std::vector<FamilyCode> &familyCodes) {
-      printf("Family codes (%zu):\n", familyCodes.size());
-
-      for (unsigned int i = 0; i < familyCodes.size(); i++) {
-        printf("Family code [%d] - accountID: %s familyCodeStr: %s\n", i, familyCodes[i].accountID.c_str(), familyCodes[i].familyCodeStr.c_str());
-      }
-    }
-    //! [familyCodes]
-
-    //! [symbolSamples]
-    void TestCppClient::symbolSamples(int reqId, const std::vector<ContractDescription> &contractDescriptions) {
-      printf("Symbol Samples (total=%zu) reqId: %d\n", contractDescriptions.size(), reqId);
-
-      for (unsigned int i = 0; i < contractDescriptions.size(); i++) {
-        Contract contract = contractDescriptions[i].contract;
-        std::vector<std::string> derivativeSecTypes = contractDescriptions[i].derivativeSecTypes;
-        printf("Contract (%u): conId: %d, symbol: %s, secType: %s, primaryExchange: %s, currency: %s, ", i, contract.conId, contract.symbol.c_str(), contract.secType.c_str(), contract.primaryExchange.c_str(), contract.currency.c_str());
-        printf("Derivative Sec-types (%zu):", derivativeSecTypes.size());
-        for (unsigned int j = 0; j < derivativeSecTypes.size(); j++) {
-          printf(" %s", derivativeSecTypes[j].c_str());
-        }
-        printf(", description: %s, issuerId: %s", contract.description.c_str(), contract.issuerId.c_str());
-        printf("\n");
-      }
-    }
-    //! [symbolSamples]
-
-    //! [mktDepthExchanges]
-    void TestCppClient::mktDepthExchanges(const std::vector<DepthMktDataDescription> &depthMktDataDescriptions) {
-      printf("Mkt Depth Exchanges (%zu):\n", depthMktDataDescriptions.size());
-
-      for (unsigned int i = 0; i < depthMktDataDescriptions.size(); i++) {
-        printf("Depth Mkt Data Description [%d] - exchange: %s secType: %s listingExch: %s serviceDataType: %s aggGroup: %s\n", i,
-            depthMktDataDescriptions[i].exchange.c_str(),
-            depthMktDataDescriptions[i].secType.c_str(),
-            depthMktDataDescriptions[i].listingExch.c_str(),
-            depthMktDataDescriptions[i].serviceDataType.c_str(),
-            Utils::intMaxString(depthMktDataDescriptions[i].aggGroup).c_str());
-      }
-    }
-    //! [mktDepthExchanges]
-
-    //! [tickNews]
-    void TestCppClient::tickNews(int tickerId, time_t timeStamp, const std::string& providerCode, const std::string& articleId, const std::string& headline, const std::string& extraData) {
-      char timeStampStr[80];
-#if defined(IB_WIN32)
-      ctime_s(timeStampStr, sizeof(timeStampStr), &(timeStamp /= 1000));
-#else
-      ctime_r(&(timeStamp /= 1000), timeStampStr);
-#endif
-      printf("News Tick. TickerId: %d, TimeStamp: %s, ProviderCode: %s, ArticleId: %s, Headline: %s, ExtraData: %s\n", tickerId, timeStampStr, providerCode.c_str(), articleId.c_str(), headline.c_str(), extraData.c_str());
-    }
-    //! [tickNews]
-
-    //! [smartcomponents]]
-    void TestCppClient::smartComponents(int reqId, const SmartComponentsMap& theMap) {
-      printf("Smart components: (%zu):\n", theMap.size());
-
-      for (SmartComponentsMap::const_iterator i = theMap.begin(); i != theMap.end(); i++) {
-        printf(" bit number: %d exchange: %s exchange letter: %c\n", i->first, std::get<0>(i->second).c_str(), std::get<1>(i->second));
-      }
-    }
-    //! [smartcomponents]
-
-    //! [tickReqParams]
-    void TestCppClient::tickReqParams(int tickerId, double minTick, const std::string& bboExchange, int snapshotPermissions) { }
-    //! [tickReqParams]
-
-    //! [newsProviders]
-    void TestCppClient::newsProviders(const std::vector<NewsProvider> &newsProviders) {
-      printf("News providers (%zu):\n", newsProviders.size());
-
-      for (unsigned int i = 0; i < newsProviders.size(); i++) {
-        printf("News provider [%d] - providerCode: %s providerName: %s\n", i, newsProviders[i].providerCode.c_str(), newsProviders[i].providerName.c_str());
-      }
-    }
-    //! [newsProviders]
-
-    //! [newsArticle]
-    void TestCppClient::newsArticle(int requestId, int articleType, const std::string& articleText) {
-      printf("News Article. Request Id: %d, Article Type: %d\n", requestId, articleType);
-      if (articleType == 0) {
-        printf("News Article Text (text or html): %s\n", articleText.c_str());
-      } else if (articleType == 1) {
-#if defined(IB_WIN32)
-        std::wstring path;
-        WCHAR s[MAX_PATH];
-        if (GetCurrentDirectoryW(MAX_PATH, s) == 0) {
-          printf("GetCurrentDirectoryW error\n");
-          return;
-        }
-        path = s + std::wstring(L"\\MST$06f53098.pdf");
-#elif defined(IB_POSIX)
-        std::string path;
-        char s[1024];
-        if (getcwd(s, sizeof(s)) == NULL) {
-          printf("getcwd() error\n");
-          return;
-        }
-        path = s + std::string("/MST$06f53098.pdf");
-#endif
-        std::vector<std::uint8_t> bytes = Utils::base64_decode(articleText);
-        std::ofstream outfile(path, std::ios::out | std::ios::binary);
-        outfile.write((const char*)bytes.data(), bytes.size());
-#if defined(IB_WIN32)
-        printf("Binary/pdf article was saved to: %ls\n", path.c_str());
-#else
-        printf("Binary/pdf article was saved to: %s\n", path.c_str());
-#endif
-      }
-    }
-    //! [newsArticle]
-
-    void TestCppClient::historicalNews(int requestId, const std::string& time, const std::string& providerCode, const std::string& articleId, const std::string& headline) {}
-    void TestCppClient::historicalNewsEnd(int requestId, bool hasMore) {}
-
-    //! [headTimestamp]
-    void TestCppClient::headTimestamp(int reqId, const std::string& headTimestamp) {
-      printf( "Head time stamp. ReqId: %d - Head time stamp: %s,\n", reqId, headTimestamp.c_str());
-
-    }
-    //! [headTimestamp]
-
-    //! [histogramData]
-    void TestCppClient::histogramData(int reqId, const HistogramDataVector& data) {
-      printf("Histogram. ReqId: %d, data length: %zu\n", reqId, data.size());
-
-      for (const HistogramEntry& entry : data) {
-        printf("\t price: %s, size: %s\n", Utils::doubleMaxString(entry.price).c_str(), DecimalFunctions::decimalStringToDisplay(entry.size).c_str());
-      }
-    }
-    //! [histogramData]
-
-    //! [historicalDataUpdate]
-    void TestCppClient::historicalDataUpdate(int reqId, const Bar& bar) {
-      printf( "HistoricalDataUpdate. ReqId: %d - Date: %s, Open: %s, High: %s, Low: %s, Close: %s, Volume: %s, Count: %s, WAP: %s\n", reqId, bar.time.c_str(),
-          Utils::doubleMaxString(bar.open).c_str(), Utils::doubleMaxString(bar.high).c_str(), Utils::doubleMaxString(bar.low).c_str(), Utils::doubleMaxString(bar.close).c_str(),
-          DecimalFunctions::decimalStringToDisplay(bar.volume).c_str(), Utils::intMaxString(bar.count).c_str(), DecimalFunctions::decimalStringToDisplay(bar.wap).c_str());
-    }
-    //! [historicalDataUpdate]
-
-    //! [rerouteMktDataReq]
-    void TestCppClient::rerouteMktDataReq(int reqId, int conid, const std::string& exchange) {
-      printf( "Re-route market data request. ReqId: %d, ConId: %d, Exchange: %s\n", reqId, conid, exchange.c_str());
-    }
-    //! [rerouteMktDataReq]
-
-    //! [rerouteMktDepthReq]
-    void TestCppClient::rerouteMktDepthReq(int reqId, int conid, const std::string& exchange) {
-      printf( "Re-route market depth request. ReqId: %d, ConId: %d, Exchange: %s\n", reqId, conid, exchange.c_str());
-    }
-    //! [rerouteMktDepthReq]
-
-    //! [marketRule]
-    void TestCppClient::marketRule(int marketRuleId, const std::vector<PriceIncrement> &priceIncrements) {
-      printf("Market Rule Id: %s\n", Utils::intMaxString(marketRuleId).c_str());
-      for (unsigned int i = 0; i < priceIncrements.size(); i++) {
-        printf("Low Edge: %s, Increment: %s\n", Utils::doubleMaxString(priceIncrements[i].lowEdge).c_str(), Utils::doubleMaxString(priceIncrements[i].increment).c_str());
-      }
-    }
-    //! [marketRule]
-
-    //! [pnl]
-    void TestCppClient::pnl(int reqId, double dailyPnL, double unrealizedPnL, double realizedPnL) {
-      printf("PnL. ReqId: %d, daily PnL: %s, unrealized PnL: %s, realized PnL: %s\n", reqId, Utils::doubleMaxString(dailyPnL).c_str(), Utils::doubleMaxString(unrealizedPnL).c_str(),
-          Utils::doubleMaxString(realizedPnL).c_str());
-    }
-    //! [pnl]
-
-    //! [pnlsingle]
-    void TestCppClient::pnlSingle(int reqId, Decimal pos, double dailyPnL, double unrealizedPnL, double realizedPnL, double value) {
-      printf("PnL Single. ReqId: %d, pos: %s, daily PnL: %s, unrealized PnL: %s, realized PnL: %s, value: %s\n", reqId, DecimalFunctions::decimalStringToDisplay(pos).c_str(), Utils::doubleMaxString(dailyPnL).c_str(),
-          Utils::doubleMaxString(unrealizedPnL).c_str(), Utils::doubleMaxString(realizedPnL).c_str(), Utils::doubleMaxString(value).c_str());
-    }
-    //! [pnlsingle]
-
-    //! [historicalticks]
-    void TestCppClient::historicalTicks(int reqId, const std::vector<HistoricalTick>& ticks, bool done) {
-      for (const HistoricalTick& tick : ticks) {
-        std::time_t t = tick.time;
-        char timeStr[80];
-#if defined(IB_WIN32)
-        ctime_s(timeStr, sizeof(timeStr), &t);
-#else
-        ctime_r(&t, timeStr);
-#endif
-        std::cout << "Historical tick. ReqId: " << reqId << ", time: " << timeStr << ", price: "<< Utils::doubleMaxString(tick.price).c_str()	<< ", size: " << DecimalFunctions::decimalStringToDisplay(tick.size).c_str() << std::endl;
-      }
-    }
-    //! [historicalticks]
-
-    //! [historicalticksbidask]
-    void TestCppClient::historicalTicksBidAsk(int reqId, const std::vector<HistoricalTickBidAsk>& ticks, bool done) {
-      for (const HistoricalTickBidAsk& tick : ticks) {
-        std::time_t t = tick.time;
-        char timeStr[80];
-#if defined(IB_WIN32)
-        ctime_s(timeStr, sizeof(timeStr), &t);
-#else
-        ctime_r(&t, timeStr);
-#endif
-        std::cout << "Historical tick bid/ask. ReqId: " << reqId << ", time: " << timeStr << ", price bid: "<< Utils::doubleMaxString(tick.priceBid).c_str()	<<
-          ", price ask: "<< Utils::doubleMaxString(tick.priceAsk).c_str() << ", size bid: " << DecimalFunctions::decimalStringToDisplay(tick.sizeBid).c_str() << ", size ask: " << DecimalFunctions::decimalStringToDisplay(tick.sizeAsk).c_str() <<
-          ", bidPastLow: " << tick.tickAttribBidAsk.bidPastLow << ", askPastHigh: " << tick.tickAttribBidAsk.askPastHigh << std::endl;
-      }
-    }
-    //! [historicalticksbidask]
-
-    //! [historicaltickslast]
-    void TestCppClient::historicalTicksLast(int reqId, const std::vector<HistoricalTickLast>& ticks, bool done) {
-      for (HistoricalTickLast tick : ticks) {
-        std::time_t t = tick.time;
-        char timeStr[80];
-#if defined(IB_WIN32)
-        ctime_s(timeStr, sizeof(timeStr), &t);
-#else
-        ctime_r(&t, timeStr);
-#endif
-        std::cout << "Historical tick last. ReqId: " << reqId << ", time: " << timeStr << ", price: "<< Utils::doubleMaxString(tick.price).c_str() <<
-          ", size: " << DecimalFunctions::decimalStringToDisplay(tick.size).c_str() << ", exchange: " << tick.exchange << ", special conditions: " << tick.specialConditions <<
-          ", unreported: " << tick.tickAttribLast.unreported << ", pastLimit: " << tick.tickAttribLast.pastLimit << std::endl;
-      }
-    }
-    //! [historicaltickslast]
-
-    //! [tickbytickalllast]
-    void TestCppClient::tickByTickAllLast(int reqId, int tickType, time_t time, double price, Decimal size, const TickAttribLast& tickAttribLast, const std::string& exchange, const std::string& specialConditions) {
-      char timeStr[80];
-#if defined(IB_WIN32)
-      ctime_s(timeStr, sizeof(timeStr), &time);
-#else
-      ctime_r(&time, timeStr);
-#endif
-      printf("Tick-By-Tick. ReqId: %d, TickType: %s, Time: %s, Price: %s, Size: %s, PastLimit: %d, Unreported: %d, Exchange: %s, SpecialConditions:%s\n",
-          reqId, (tickType == 1 ? "Last" : "AllLast"), timeStr, Utils::doubleMaxString(price).c_str(), DecimalFunctions::decimalStringToDisplay(size).c_str(), tickAttribLast.pastLimit, tickAttribLast.unreported, exchange.c_str(), specialConditions.c_str());
-    }
-    //! [tickbytickalllast]
-
-    //! [tickbytickbidask]
-    void TestCppClient::tickByTickBidAsk(int reqId, time_t time, double bidPrice, double askPrice, Decimal bidSize, Decimal askSize, const TickAttribBidAsk& tickAttribBidAsk) {
-      char timeStr[80];
-#if defined(IB_WIN32)
-      ctime_s(timeStr, sizeof(timeStr), &time);
-#else
-      ctime_r(&time, timeStr);
-#endif
-      printf("Tick-By-Tick. ReqId: %d, TickType: BidAsk, Time: %s, BidPrice: %s, AskPrice: %s, BidSize: %s, AskSize: %s, BidPastLow: %d, AskPastHigh: %d\n",
-          reqId, timeStr, Utils::doubleMaxString(bidPrice).c_str(), Utils::doubleMaxString(askPrice).c_str(), DecimalFunctions::decimalStringToDisplay(bidSize).c_str(), DecimalFunctions::decimalStringToDisplay(askSize).c_str(), tickAttribBidAsk.bidPastLow, tickAttribBidAsk.askPastHigh);
-    }
-    //! [tickbytickbidask]
-
-    //! [tickbytickmidpoint]
-    void TestCppClient::tickByTickMidPoint(int reqId, time_t time, double midPoint) {
-      char timeStr[80];
-#if defined(IB_WIN32)
-      ctime_s(timeStr, sizeof(timeStr), &time);
-#else
-      ctime_r(&time, timeStr);
-#endif
-      printf("Tick-By-Tick. ReqId: %d, TickType: MidPoint, Time: %s, MidPoint: %s\n", reqId, timeStr, Utils::doubleMaxString(midPoint).c_str());
-    }
-    //! [tickbytickmidpoint]
-
-    //! [orderbound]
-    void TestCppClient::orderBound(long long permId, int clientId, int orderId) {
-      printf("Order bound. PermId: %s, clientId: %s, orderId: %s\n", Utils::llongMaxString(permId).c_str(), Utils::intMaxString(clientId).c_str(), Utils::intMaxString(orderId).c_str());
-    }
-    //! [orderbound]
-
-    void TestCppClient::completedOrder(const Contract& contract, const Order& order, const OrderState& orderState) {}
-    void TestCppClient::completedOrdersEnd() {}
-
-    //! [replacefaend]
-    void TestCppClient::replaceFAEnd(int reqId, const std::string& text) {
-      printf("Replace FA End. Request: %d, Text:%s\n", reqId, text.c_str());
-    }
-    //! [replacefaend]
-
-    //! [wshMetaData]
-    void TestCppClient::wshMetaData(int reqId, const std::string& dataJson) {
-      printf("WSH Meta Data. ReqId: %d, dataJson: %s\n", reqId, dataJson.c_str());
-    }
-    //! [wshMetaData]
-
-    //! [wshEventData]
-    void TestCppClient::wshEventData(int reqId, const std::string& dataJson) {
-      printf("WSH Event Data. ReqId: %d, dataJson: %s\n", reqId, dataJson.c_str());
-    }
-    //! [wshEventData]
-
-    //! [historicalSchedule]
-    void TestCppClient::historicalSchedule(int reqId, const std::string& startDateTime, const std::string& endDateTime, const std::string& timeZone, const std::vector<HistoricalSession>& sessions) {
-      printf("Historical Schedule. ReqId: %d, Start: %s, End: %s, TimeZone: %s\n", reqId, startDateTime.c_str(), endDateTime.c_str(), timeZone.c_str());
-      for (unsigned int i = 0; i < sessions.size(); i++) {
-        printf("\tSession. Start: %s, End: %s, RefDate: %s\n", sessions[i].startDateTime.c_str(), sessions[i].endDateTime.c_str(), sessions[i].refDate.c_str());
-      }
-    }
-    //! [historicalSchedule]
-
-    //! [userInfo]
-    void TestCppClient::userInfo(int reqId, const std::string& whiteBrandingId) {
-      printf("User Info. ReqId: %d, WhiteBrandingId: %s\n", reqId, whiteBrandingId.c_str());
-    }
-    //! [userInfo]
-
-    //! [currenttimeinmillis]
-    void TestCppClient::currentTimeInMillis(time_t timeInMillis) {
-      struct tm timeinfo;
-      char currentTimeInMillis[80];
-      time_t time = timeInMillis / 1000;
-      time_t millis = timeInMillis - (time * 1000);
-#if defined(IB_WIN32)
-      localtime_s(&timeinfo, &time);
-#else
-      localtime_r(&time, &timeinfo);
-#endif
-      strftime(currentTimeInMillis, sizeof(currentTimeInMillis), "%b %d, %Y %H:%M:%S", &timeinfo);
-      printf("The current date/time in millis is %llu : %s.%03llu\n", static_cast<unsigned long long>(timeInMillis), currentTimeInMillis, static_cast<unsigned long long>(millis));
-    }
-    //! [currenttimeinmillis]
-
-    // protobuf
-#if !defined(USE_WIN_DLL)
-    void TestCppClient::execDetailsProtoBuf(const protobuf::ExecutionDetails& executionDetailsProto) {}
-    void TestCppClient::execDetailsEndProtoBuf(const protobuf::ExecutionDetailsEnd& executionDetailsEndProto) {}
-    void TestCppClient::orderStatusProtoBuf(const protobuf::OrderStatus& orderStatusProto) {
-      //printf("Order Status: %s\n", orderStatusProto.ShortDebugString().c_str());
-
-      // std::cout << " now printing account summary:" << std::endl;
-      //  m_pClient->reqAccountSummary(++m_orderId, "All", AccountSummaryTags::getAllTags());
-
-
-
-    }
-    void TestCppClient::openOrderProtoBuf(const protobuf::OpenOrder& openOrderProto) {
-      //  printf("Open Order Protobuf: %s\n", openOrderProto.ShortDebugString().c_str());
-      std::cout << "Open Order Protobuf" << std::endl;
-
-      int32_t order_id = openOrderProto.orderid();
-
-      // 2. Accessing Contract fields (nested message)
-      const auto& contract = openOrderProto.contract();
-      std::string symbol = contract.symbol();
-      std::string sec_type = contract.sectype();
-
-      // 3. Accessing Order parameters (nested message)
-      const auto& order = openOrderProto.order();
-      std::string action = order.action();       // e.g., "BUY" or "SELL"
-      double total_quantity = ::atof(order.totalquantity().c_str());
-      double lmt_price = order.lmtprice();
-      // 4. Accessing OrderState metrics (nested message)
-      const auto& order_state = openOrderProto.orderstate();
-      std::string status = order_state.status(); // e.g., "Submitted"
-
-
-      std::cout << "order_id:" << order_id << "\n "  << "symbol:" << symbol << "\n action:" << action << "\ntotal_quantity:" << total_quantity << "\n lmt_price:" << lmt_price << "\n status:" <<  status << std::endl;
-
-
-
-
-    }
-    void TestCppClient::openOrdersEndProtoBuf(const protobuf::OpenOrdersEnd& openOrdersEndProto) {
-      printf("Open Orders Proto End: %s\n", openOrdersEndProto.ShortDebugString().c_str());
-
-
-    }
-
-    //void TestCppClient::openOrder(OrderId orderId, const Contract& contract, 
-    //                          const Order& order, const OrderState& orderState) {
-    //    // Process each open order here
-    //}
-
-    //void TestCppClient::orderStatus(OrderId orderId, const std::string& status, 
-    //                            double filled, double remaining, double avgFillPrice, 
-    //                            int permId, int parentId, double lastFillPrice, 
-    //                            int clientId, const std::string& whyHeld) {
-    //    // Track order status updates
-    //}
-    //
-
-
-
-
-    void TestCppClient::errorProtoBuf(const protobuf::ErrorMessage& errorProto) {}
-    void TestCppClient::completedOrderProtoBuf(const protobuf::CompletedOrder& completedOrderProto) {
-      printf("Completed Order: %s\n", completedOrderProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::completedOrdersEndProtoBuf(const protobuf::CompletedOrdersEnd& completedOrdersEndProto) {
-      printf("Completed Orders End: %s\n", completedOrdersEndProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::orderBoundProtoBuf(const protobuf::OrderBound& orderBoundProto) {}
-    void TestCppClient::contractDataProtoBuf(const protobuf::ContractData& contractDataProto) {}
-    void TestCppClient::bondContractDataProtoBuf(const protobuf::ContractData& contractDataProto) {}
-    void TestCppClient::contractDataEndProtoBuf(const protobuf::ContractDataEnd& contractDataEndProto) {}
-    void TestCppClient::tickPriceProtoBuf(const protobuf::TickPrice& tickPriceProto) {
-      // printf("Tick Price: %s\n", tickPriceProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::tickSizeProtoBuf(const protobuf::TickSize& tickSizeProto) {
-      // printf("Tick Size: %s\n", tickSizeProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::tickOptionComputationProtoBuf(const protobuf::TickOptionComputation& tickOptionComputationProto) {
-      // printf("Tick Option Computation: %s\n", tickOptionComputationProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::tickGenericProtoBuf(const protobuf::TickGeneric& tickGenericProto) {
-      //  printf("Tick Generic: %s\n", tickGenericProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::tickStringProtoBuf(const protobuf::TickString& tickStringProto) {
-      //  printf("Tick String: %s\n", tickStringProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::tickSnapshotEndProtoBuf(const protobuf::TickSnapshotEnd& tickSnapshotEndProto) {
-      // printf("Tick Snapshot End: %s\n", tickSnapshotEndProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::updateMarketDepthProtoBuf(const protobuf::MarketDepth& marketDepthProto) {}
-    void TestCppClient::updateMarketDepthL2ProtoBuf(const protobuf::MarketDepthL2& marketDepthL2Proto) {}
-    void TestCppClient::marketDataTypeProtoBuf(const protobuf::MarketDataType& marketDataTypeProto) {}
-    void TestCppClient::tickReqParamsProtoBuf(const protobuf::TickReqParams& tickReqParamsProto) {
-      //  std::ostringstream oss;
-      //  if (tickReqParamsProto.has_reqid()) oss << "Ticker Id: " << tickReqParamsProto.reqid() << ", ";
-      //  if (tickReqParamsProto.has_mintick()) oss << " MinTick: " << tickReqParamsProto.mintick() << ", ";
-      //  if (tickReqParamsProto.has_bboexchange()) {
-      //    oss << "BboExchange: " << tickReqParamsProto.bboexchange() << ", ";
-      //    m_bboExchange = tickReqParamsProto.bboexchange();
-      //  }
-      //  if (tickReqParamsProto.has_snapshotpermissions()) oss << "SnapshotPermissions: " << tickReqParamsProto.snapshotpermissions() << ", ";
-      //  if (tickReqParamsProto.has_lastpriceprecision()) oss << "LastPricePrecision: " << tickReqParamsProto.lastpriceprecision() << ", ";
-      //  if (tickReqParamsProto.has_lastsizeprecision()) oss << "lastSizePrecision: " << tickReqParamsProto.lastsizeprecision();
-      //  printf("Tick Req Params. %s\n", oss.str().c_str());
-    }
-    void TestCppClient::updateAccountValueProtoBuf(const protobuf::AccountValue& accountValueProto) {}
-    void TestCppClient::updatePortfolioProtoBuf(const protobuf::PortfolioValue& portfolioValueProto) {}
-    void TestCppClient::updateAccountTimeProtoBuf(const protobuf::AccountUpdateTime& accountUpdateTimeProto) {}
-    void TestCppClient::accountDataEndProtoBuf(const protobuf::AccountDataEnd& accountDataEndProto) {}
-    void TestCppClient::managedAccountsProtoBuf(const protobuf::ManagedAccounts& managedAccountsProto) {}
-    void TestCppClient::positionProtoBuf(const protobuf::Position& positionProto) {}
-    void TestCppClient::positionEndProtoBuf(const protobuf::PositionEnd& positionEndProto) {}
-    void TestCppClient::accountSummaryProtoBuf(const protobuf::AccountSummary& accountSummaryProto) {}
-    void TestCppClient::accountSummaryEndProtoBuf(const protobuf::AccountSummaryEnd& accountSummaryEndProto) {}
-    void TestCppClient::positionMultiProtoBuf(const protobuf::PositionMulti& positionMultiProto) {}
-    void TestCppClient::positionMultiEndProtoBuf(const protobuf::PositionMultiEnd& positionMultiEndProto) {}
-    void TestCppClient::accountUpdateMultiProtoBuf(const protobuf::AccountUpdateMulti& accountUpdateMultiProto) {}
-    void TestCppClient::accountUpdateMultiEndProtoBuf(const protobuf::AccountUpdateMultiEnd& accountUpdateMultiEndProto) {}
-    void TestCppClient::historicalDataProtoBuf(const protobuf::HistoricalData& historicalDataProto) {}
-    void TestCppClient::historicalDataUpdateProtoBuf(const protobuf::HistoricalDataUpdate& historicalDataUpdateProto) {}
-    void TestCppClient::historicalDataEndProtoBuf(const protobuf::HistoricalDataEnd& historicalDataEndProto) {}
-    void TestCppClient::realTimeBarTickProtoBuf(const protobuf::RealTimeBarTick& realTimeBarTickProto) {}
-    void TestCppClient::headTimestampProtoBuf(const protobuf::HeadTimestamp& headTimestampProto) {}
-    void TestCppClient::histogramDataProtoBuf(const protobuf::HistogramData& histogramDataProto) {}
-    void TestCppClient::historicalTicksProtoBuf(const protobuf::HistoricalTicks& historicalTicksProto) {}
-    void TestCppClient::historicalTicksBidAskProtoBuf(const protobuf::HistoricalTicksBidAsk& historicalTicksBidAskProto) {}
-    void TestCppClient::historicalTicksLastProtoBuf(const protobuf::HistoricalTicksLast& historicalTicksLastProto) {}
-    void TestCppClient::tickByTickDataProtoBuf(const protobuf::TickByTickData& tickByTickDataProto) {}
-    void TestCppClient::updateNewsBulletinProtoBuf(const protobuf::NewsBulletin& newsBulletinProto) {}
-    void TestCppClient::newsArticleProtoBuf(const protobuf::NewsArticle& newsArticleProto) {}
-    void TestCppClient::newsProvidersProtoBuf(const protobuf::NewsProviders& newsProvidersProto) {}
-    void TestCppClient::historicalNewsProtoBuf(const protobuf::HistoricalNews& historicalNewsProto) {
-      printf("Historical News: %s\n", historicalNewsProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::historicalNewsEndProtoBuf(const protobuf::HistoricalNewsEnd& historicalNewsEndProto) {
-      printf("Historical News End: %s\n", historicalNewsEndProto.ShortDebugString().c_str());
-    }
-    void TestCppClient::wshMetaDataProtoBuf(const protobuf::WshMetaData& wshMetaDataProto) {}
-    void TestCppClient::wshEventDataProtoBuf(const protobuf::WshEventData& wshEventDataProto) {}
-    void TestCppClient::tickNewsProtoBuf(const protobuf::TickNews& tickNewsProto) {}
-    void TestCppClient::scannerParametersProtoBuf(const protobuf::ScannerParameters& scannerParametersProto) {}
-    void TestCppClient::scannerDataProtoBuf(const protobuf::ScannerData& scannerDataProto) {}
-    void TestCppClient::fundamentalsDataProtoBuf(const protobuf::FundamentalsData& fundamentalsDataProto) {}
-    void TestCppClient::pnlProtoBuf(const protobuf::PnL& pnlProto) {}
-    void TestCppClient::pnlSingleProtoBuf(const protobuf::PnLSingle& pnlSingleProto) {}
-    void TestCppClient::receiveFAProtoBuf(const protobuf::ReceiveFA& receiveFAProto) {}
-    void TestCppClient::replaceFAEndProtoBuf(const protobuf::ReplaceFAEnd& replaceFAEndProto) {}
-    void TestCppClient::commissionAndFeesReportProtoBuf(const protobuf::CommissionAndFeesReport& commissionAndFeesReportProto) {}
-    void TestCppClient::historicalScheduleProtoBuf(const protobuf::HistoricalSchedule& historicalScheduleProto) {}
-    void TestCppClient::rerouteMarketDataRequestProtoBuf(const protobuf::RerouteMarketDataRequest& rerouteMarketDataRequestProto) {}
-    void TestCppClient::rerouteMarketDepthRequestProtoBuf(const protobuf::RerouteMarketDepthRequest& rerouteMarketDepthRequestProto) {}
-    void TestCppClient::secDefOptParameterProtoBuf(const protobuf::SecDefOptParameter& secDefOptParameterProto) {}
-    void TestCppClient::secDefOptParameterEndProtoBuf(const protobuf::SecDefOptParameterEnd& secDefOptParameterEndProto) {}
-    void TestCppClient::softDollarTiersProtoBuf(const protobuf::SoftDollarTiers& softDollarTiersProto) {}
-    void TestCppClient::familyCodesProtoBuf(const protobuf::FamilyCodes& familyCodesProto) {}
-    void TestCppClient::symbolSamplesProtoBuf(const protobuf::SymbolSamples& symbolSamplesProto) {}
-    void TestCppClient::smartComponentsProtoBuf(const protobuf::SmartComponents& smartComponentsProto) {}
-    void TestCppClient::marketRuleProtoBuf(const protobuf::MarketRule& marketRuleProto) {}
-    void TestCppClient::userInfoProtoBuf(const protobuf::UserInfo& userInfoProto) {}
-    void TestCppClient::nextValidIdProtoBuf(const protobuf::NextValidId& nextValidIdProto) {}
-    void TestCppClient::currentTimeProtoBuf(const protobuf::CurrentTime& currentTimeProto) {}
-    void TestCppClient::currentTimeInMillisProtoBuf(const protobuf::CurrentTimeInMillis& currentTimeInMillisProto) {}
-    void TestCppClient::verifyMessageApiProtoBuf(const protobuf::VerifyMessageApi& verifyMessageApiProto) {}
-    void TestCppClient::verifyCompletedProtoBuf(const protobuf::VerifyCompleted& verifyCompletedProto) {}
-    void TestCppClient::displayGroupListProtoBuf(const protobuf::DisplayGroupList& displayGroupListProto) {}
-    void TestCppClient::displayGroupUpdatedProtoBuf(const protobuf::DisplayGroupUpdated& displayGroupUpdatedProto) {}
-    void TestCppClient::marketDepthExchangesProtoBuf(const protobuf::MarketDepthExchanges& marketDepthExchangesProto) {}
-    void TestCppClient::configResponseProtoBuf(const protobuf::ConfigResponse& configResponseProto) {
-      printf("==== Config Response Begin ====\n");
-      printf("%s\n", configResponseProto.DebugString().c_str());
-      printf("==== Config Response End ====\n");
-    }
-    void TestCppClient::updateConfigResponseProtoBuf(const protobuf::UpdateConfigResponse& updateConfigResponseProto) {
-      printf("==== Update Config Response Begin ====\n");
-      printf("%s\n", updateConfigResponseProto.DebugString().c_str());
-      printf("==== Update Config Response End ====\n");
-    }
-
-    void TestCppClient::initiate_task_schedulers() {
-      DailyScheduledTask daily_3_00(*scheduler_threadpool_, 3, 00, 0, [] {
-          std::cout << "[worker] Daily 3:00 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_3_15(*scheduler_threadpool_, 3, 15, 0, [] {
-          std::cout << "[worker] Daily 3:15 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      // Fire every day at 16:15:00 local time.
-      DailyScheduledTask daily_4_00(*scheduler_threadpool_, 4, 00, 0, [] {
-          std::cout << "[worker] Daily 4:00 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_8_00(*scheduler_threadpool_, 8, 0, 0, [] {
-          std::cout << "[worker] Daily 8:00 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_8_45(*scheduler_threadpool_, 8, 45, 0, [] {
-          std::cout << "[worker] Daily 8:45 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_8_55(*scheduler_threadpool_, 8, 55, 0, [] {
-          std::cout << "[worker] Daily 8:55 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-
-      DailyScheduledTask daily_9_15(*scheduler_threadpool_, 9, 15, 0, [] {
-          std::cout << "[worker] Daily 9:15 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-      DailyScheduledTask daily_10_00(*scheduler_threadpool_, 10, 00, 0, [] {
-          std::cout << "[worker] Daily 10:00 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_12_00(*scheduler_threadpool_, 12, 00, 0, [] {
-          std::cout << "[worker] Daily 12:00 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_14_30(*scheduler_threadpool_, 14, 30, 0, [] {
-          std::cout << "[worker] Daily 2:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-
-
-
-      DailyScheduledTask daily_15_30(*scheduler_threadpool_, 15, 30, 0, [] {
-          std::cout << "[worker] Daily 3:30 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-
-      DailyScheduledTask daily_15_45(*scheduler_threadpool_, 15, 45, 0, [] {
-          std::cout << "[worker] Daily 3:45 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_15_48(*scheduler_threadpool_, 15, 48, 0, [] {
-          std::cout << "[worker] Daily 3:48 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_15_50(*scheduler_threadpool_, 15, 50, 0, [] {
-          std::cout << "[worker] Daily 3:50 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-      DailyScheduledTask daily_15_55(*scheduler_threadpool_, 15, 55, 0, [] {
-          std::cout << "[worker] Daily 3:55 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-      DailyScheduledTask daily_16_00(*scheduler_threadpool_, 16, 00, 0, [] {
-          std::cout << "[worker] Daily 4:00 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-
-      DailyScheduledTask daily_16_30(*scheduler_threadpool_, 16, 30, 0, [] {
-          std::cout << "[worker] Daily 4:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_17_30(*scheduler_threadpool_, 17, 30, 0, [] {
-          std::cout << "[worker] Daily 5:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_18_30(*scheduler_threadpool_, 18, 30, 0, [] {
-          std::cout << "[worker] Daily 6:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-      DailyScheduledTask daily_19_30(*scheduler_threadpool_, 19, 30, 0, [] {
-          std::cout << "[worker] Daily 7:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_19_45(*scheduler_threadpool_, 19, 45, 0, [] {
-          std::cout << "[worker] Daily 7:45 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_20_01(*scheduler_threadpool_, 20, 01, 0, [] {
-          std::cout << "[worker] Daily 8:01 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_20_15(*scheduler_threadpool_, 20, 15, 0, [] {
-          std::cout << "[worker] Daily 8:15 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_20_30(*scheduler_threadpool_, 20, 30, 0, [] {
-          std::cout << "[worker] Daily 8:30 PM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-      DailyScheduledTask daily_3_45(*scheduler_threadpool_, 3, 45, 0, [] {
-          std::cout << "[worker] Daily 3:45 AM task running on pool.\n";
-          bool is_terminated = false;
-          while(!is_terminated) {
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
-
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          is_terminated = true;
-          fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
-
-          };
-          // ... do the actual work here ...
-          });
-
-
-    }
-
-    void TestCppClient::ctor_helpers() {
-      tracked_assets_.insert("SPY");
-      tracked_assets_.insert("PILL");
-      tracked_assets_.insert("JNUG");
-      tracked_assets_.insert("SOXS");
-      tracked_assets_.insert("NVDA");
-      tracked_assets_.insert("INTC");
-
-
-      tracked_assets_IDs_;
-      tracked_assets_IDs_symbol_map_;
-
-      for(auto& symbol:tracked_assets_) {
-        std::cout << "tracking "<< symbol << std::endl;
-
-        auto contractID = m_orderId++;
-        tracked_assets_IDs_.emplace_back(contractID);
-        tracked_assets_IDs_symbol_map_inverse_[contractID] = symbol;
-        tracked_assets_IDs_symbol_map_[symbol] = contractID;
 
 
         Contract contract;
@@ -4656,182 +3409,1482 @@ if(long_positions.size() > 0){
         contract.secType = "STK";
         contract.exchange = "SMART";
         contract.currency = "USD";
+        //        auto it = std::next(std::get<0>(price_request_counter_).begin(), request_counter++);
+        //        const int tickerId = *it;
 
-        // Request market data (tickerId = 1001, snapshot = false)
-        // m_pClient->reqMktData(contractID, contract, "", true, false, TagValueListSPtr());
+        //        m_pClient->reqMktData(tickerId, contract, "", true, false, TagValueListSPtr());
+
+        if(position_float > 0){
 
 
 
-        //auto fut = scheduler_threadpool_->enqueue([](){});
-        //tracked_assets_IDs_futures_.emplace_back(std::move(fut));
+
+
+
+
+
+
+
+
+
+          // fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{}:({},{},{},{})\n"), symbol, static_cast<int>(position_float), average_cost_float,ticker_price_map[symbol].last_price_, total_position_cost); 
+          fmt::print(fmt::emphasis::bold | fg(fmt::color::orange) | bg(fmt::color::black), fmt::runtime("{:>6}: "), symbol);
+          float percent_deviation = 100.0*(last_price - average_cost_float)/average_cost_float;
+
+
+
+          if(profit_taking_engagements_activation_[symbol] && !profit_taking_already_placed_[symbol] ) {
+            std::cout << RED << "ENGAGING IN PROFIT ACTIVITIES " << std::endl;
+            if(last_price > average_cost_float) {
+              std::cout << RED << "last_price > average_cost_float " << std::endl;
+
+              if(percent_deviation > profit_percent_threshold_) {
+
+                std::cout << RED << "percent_deviation > profit_percent_threshold_ " << std::endl;
+                float total_asset_value = last_price*position_float;
+                float profit =  (total_asset_value - total_position_cost);
+
+                std::cout << RED << profit << std::endl;
+
+                if(profit > profit_minimum_threshold_) {
+
+                  std::cout << RED << "PROFIT CONDITION REACHED" << RESET << std::endl;
+                  // Profit taking is now activated...placing order with limit price
+                  float limit_price = last_price*(1.0 + limit_price_percent_above_current_level_) ;
+
+                  // schedule the task
+                  auto fut = threadpool_priority_->queue(true,[this, symbol,limit_price, position_float]()->void{ 
+                      profit_taking_engagements_activation_[symbol] = true;
+                      int num_allowed_iterations = 10;
+                      int iteration = 0;
+                      //do
+                      {
+                      std::cout << RED << " ENQUED PROFIT TAKING ACTIVITY " << symbol << RESET << std::endl;
+
+
+                      Contract contract;
+                      contract.symbol = symbol;
+                      contract.secType = "STK";
+                      contract.exchange = "SMART";
+                      contract.currency = "USD";
+
+                      // Define the limit order
+                      Order order;
+                      order.action = "SELL";          // "BUY" or "SELL"
+                      order.orderType = "LMT";       // Limit order type
+                      order.totalQuantity = DecimalFunctions::doubleToDecimal(position_float);     // Number of shares
+                      order.lmtPrice = roundToTick(limit_price,0.01);
+                      order.tif = "GTC";
+
+                      // Submit the order via the client socket
+                      // m_orderId should be fetched from nextValidId callback
+                      auto orderId = m_orderId++;
+
+                      std::cout << contract.symbol << " " << order.action << " " << order.orderType << " " << order.totalQuantity << " " <<  order.lmtPrice << " " << order.tif << std::endl;
+
+                      m_pClient->placeOrder(orderId, contract, order);
+                      std::cout << "order placed!" << std::endl;
+                      profit_taking_already_placed_[symbol] = true;
+
+                      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+                      //if(++iteration == num_allowed_iterations) {
+                      //  profit_taking_activity_finished_[symbol] = true;
+                      //  std::cout << RED << " PROFIT HAS BEEN TAKEN for " << symbol << RESET << std::endl;
+                      //}
+                      }
+                      // while(!profit_taking_activity_finished_[symbol]);
+
+                      // profit_taking_engagements_activation_[symbol] = false;
+
+                  });
+
+                }
+              }
+            }
+          }else {
+
+          }
+
+          if(percent_deviation < 0){
+
+            std::cout << BRIGHT_BRICK_RED << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET ;
+
+            if(::fabs(percent_deviation) > percent_deviation_threshold_map_[symbol]) {
+              std::cout << BRIGHT_BRICK_RED << "●" << RESET;
+            }else {
+              std::cout << GREEN << "●" << RESET;
+
+            }
+            std::cout << std::endl;
+
+            // std::cout << BRICK_RED << BOLD << std::fixed<< std::setprecision(2) <<  ::fabs(position_float) << " (" <<  average_cost_float << "," << ticker_price_map[symbol].last_price_ << "," << percent_deviation << "%):("<< profit << "):"<<  total_position_cost << RESET << std::endl;
+          }
+          else {
+            std::cout <<  GREEN << BOLD << std::fixed << std::setprecision(2) << "(" << percent_deviation << "%," << profit << "):" << RESET << PURPLE << BOLD << "("  << ticker_price_map[symbol].last_price_ << RESET << "," <<  average_cost_float << RESET << "):" << BLUE  << BOLD << "(" <<::fabs(position_float) << ","<<  total_position_cost << ")" << RESET << std::endl;
+
+          }
+        }
       }
-
-
-
-
-
-
-
-
-      contract_template.symbol = {"LLY"};
-      contract_template.secType =  {"STK"};
-      contract_template.exchange = {"SMART"};
-      contract_template.currency = {"USD"};
-      contract_template.exchange = {"SMART"};
-      contract_template.primaryExchange = {"NASDAQ"};
-
-      print_once_positions_ = print_once_positions_default_;
-
-      account_value_ = account_value_default_;
-      buying_power_ = buying_power_default_;
-
-      threadpool_priority_.reset(new ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>(thread_pool_session_scheduler_size_));
-      scheduler_threadpool_.reset(new ThreadPoolSessionScheduler(thread_pool_session_scheduler_size_));
-
-      if(should_initiate_task_schedulers_){
-        initiate_task_schedulers();
-      }
-
-
-
-      //  {
-      //    auto t = std::chrono::system_clock::to_time_t(daily.next_fire_time());
-      //    std::cout << "Next fire time: " << std::ctime(&t);
-      //  }
-      //
     }
+  }else {
+    fmt::print(fg(fmt::color::red),"SORRY THERE IS NO AVAILABLE POSIITON TO PRINT\n");
+  }
+
+  std::cout << account_summary_ << std::endl;
+
+  std::cout << BLUE << "OPEN ORDERS :" << RESET << std::endl;
+  fmt::print(fg(fmt::color::purple) | fmt::emphasis::bold,"{}\n",open_orders);
 
 
-    bool TestCppClient::req_position_end_cond_var_trigger_ = {req_position_end_cond_var_trigger_default_};
-    std::mutex TestCppClient::req_position_end_mtx_;
-    std::condition_variable TestCppClient::req_position_end_cond_var_;
+  //    auto action =  order.action;
+  //    auto total_quantity = order.totalQuantity;
+  //    auto order_type = order.orderType;
+  //    auto limit_price = order.lmtPrice;
+  //    auto aux_price = order.auxPrice;
+  //    auto order_time_in_force =  order.tif;
+  //    auto order_transmit = order.transmit;
+  //
+  //    /////////////////////////////////////////////////////////////////
+  //    contract.conId;
+  //    contract.symbol;
+  //    contract.secType;
+  //    contract.lastTradeDateOrContractMonth;
+  //    contract.right;
+  //    contract.multiplier;
+  //    contract.exchange;
+  //    contract.currency;
+  //    contract.tradingClass;
+  //    contract.secIdType;
+  //    contract.secId;
+  //    contract.conId;
+  //    contract.conId;
+  //
+  //    /////////////////////////////////////////////////////////////////
+  //    orderState.initMarginBefore;
+  //    orderState.maintMarginBefore;
+  //    orderState.equityWithLoanBefore;
+  //
+  //    orderState.initMarginChange;
+  //    orderState.maintMarginChange;
+  //    orderState.equityWithLoanChange;
+  //
+  //    orderState.initMarginAfter;
+  //    orderState.maintMarginAfter;
+  //    orderState.equityWithLoanAfter;
+  //
+  //    // orderState.commission;
+  //    orderState.minCommissionAndFees;
+  //    orderState.maxCommissionAndFees;
+  //    orderState.warningText;
+  //    orderState.completedTime;
+  //    orderState.completedStatus;
+  //
+  //    orderState.rejectReason;
+  //    orderState.suggestedSize;
+  //
 
 
-    std::condition_variable TestCppClient::req_position_price_end_cond_var_;
-    std::mutex TestCppClient::req_position_price_end_mtx_;
-    bool TestCppClient::req_position_price_end_cond_var_trigger_ = {req_position_price_end_cond_var_trigger_default_};
-
-    std::condition_variable TestCppClient::account_update_end_cond_var_;
-    std::mutex TestCppClient::account_update_end_mtx_;
-    bool TestCppClient::account_update_end_cond_var_trigger_ = {account_update_end_cond_var_trigger_default_};
 
 
 
-    std::condition_variable TestCppClient::req_open_oder_end_cond_var_;
-    std::mutex TestCppClient::req_open_oder_end_mtx_;
-    bool TestCppClient::req_open_oder_cond_var_trigger_ = {req_open_oder_cond_var_trigger_default_};
+
+  //  std::cout << std::endl;
+  //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "VaR:{}\n",total_VaR);
+  //  fmt::print(fg(fmt::color::red) | fmt::emphasis::bold, "Buying Power:{}\n", buying_power_);
+
+  //  std::cout << "waiting for account update to finish" << std::endl;
+
+  //current_account_state_.print();
+}
+//! [position]
+void TestCppClient::position( const std::string& account, const Contract& contract, Decimal position, double avgCost) {
+
+  //std::cout << "getting positions:" << std::endl;
+  //printf("%f\n",position);
+
+  std::string position_str = DecimalFunctions::decimalStringToDisplay(position);
+
+  //  std::cout << "position_str:" << position_str << std::endl;
+
+  std::string symbol =  contract.symbol;
+  //   std::cout << "symbol:" << symbol << std::endl;
+  //   std::cout << "symbol size:" << symbol.size() << std::endl;
+  if(!symbol.empty()) {
+    std::string average_cost_str = Utils::doubleMaxString(avgCost);
+    float position_float = ::atof(position_str.c_str());
+    float average_cost_float = ::atof(average_cost_str.c_str());
+    float total_position_cost = position_float*average_cost_float;
+
+    // contract.size;
+
+    position_details_[symbol].num_positions_ = position_float;
+    position_details_[symbol].average_cost_ = average_cost_float;
 
 
 
-    std::mutex TestCppClient::req_open_oder_status_update_mtx_;
-    std::map<int,OrderStatus> TestCppClient::open_order_status_update_;
+    //    if(!print_once_positions_) {
+    //      fmt::print(fg(fmt::color::violet)|bg(fmt::color::black), "Positions:\n");
+    //      print_once_positions_ = !print_once_positions_default_;
+    //    }
+    //
+    // fmt::print(bg(fmt::color::black),"{}","");
+
+    //     if(::fabs(position_float) > 0) {
+    //       // printf( "Position. %s - Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", account.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(position).c_str(), Utils::doubleMaxString(avgCost).c_str());
+    //       if(position_float < 0){
+    //   //      if(!print_once_positions_)
+    //   //        fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tSHORTS:\n");
+    //
+    //         fmt::print(fg(fmt::color::orange) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+    //       }else {
+    //         //if(!print_once_positions_)
+    //         //  fmt::print(fg(fmt::color::violet) | bg(fmt::color::black), "\tLONGS:\n");
+    //         fmt::print(fg(fmt::color::olive) | bg(fmt::color::black) , "{}:({},{},{})\n",symbol,position_float,average_cost_float, total_position_cost);
+    //       }
+    //     }
+    //
 
 
-    std::mutex TestCppClient::req_open_oder_status_update_proto_mtx_;
-    std::map<std::string,std::map<int,OrderStatus>> TestCppClient::open_order_status_proto_update_;
+  }
+
+}
+//! [position]
+
+//! [positionend]
+void TestCppClient::positionEnd() {
+  auto now = std::chrono::system_clock::now();
+  auto local_time = std::chrono::zoned_time{std::chrono::current_zone(), now};
+  std::cout << std::format("Local Time: {:%F %T}\n", local_time);
+  std::cout << "############################################################"<< std::endl;
+  req_position_end_cond_var_trigger_ = true;
+
+  req_position_end_cond_var_.notify_one();
+
+  //  print_once_positions_ = !print_once_positions_default_;
+  //  std::cout << "position End" << std::endl;
+}
+//! [positionend]
+
+//! [accountsummary]
+void TestCppClient::accountSummary( int reqId, const std::string& account, const std::string& tag, const std::string& value, const std::string& currency) {
+  //  printf( "Acct Summary. ReqId: %d, Account: %s, Tag: %s, Value: %s, Currency: %s\n", reqId, account.c_str(), tag.c_str(), value.c_str(), currency.c_str());
+  double val = std::stod(value);
+
+  static short int local_precision = {2};
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(local_precision) << val;
+
+  float value_float = ::atof(stream.str().c_str());
 
 
+  value_float = std::round(value_float*100.0f)/100.0f;
+  //  value = std::stod(value.c_str()); 
+  account_summary_[tag] = value_float;
 
-    std::unique_ptr<ThreadPoolSessionScheduler> TestCppClient::scheduler_threadpool_;
+}
+//! [accountsummary]
 
-    std::map<int, AssetPrice> TestCppClient::current_price_list_;
+//! [accountsummaryend]
+void TestCppClient::accountSummaryEnd( int reqId) {
+  //  printf( "AccountSummaryEnd. Req Id: %d\n", reqId);
+  //
 
-    Json::Value CurrentAccountState::account_update_state_;
-    Json::Value TestCppClient::account_summary_;
+  account_update_end_cond_var_trigger_ = true;
+  account_update_end_cond_var_.notify_one();
 
-    std::mutex TestCppClient::open_order_update_lock_mtx_;
+  std::cout << "account_summary:" << account_summary_ << std::endl;
+}
+//! [accountsummaryend]
 
+void TestCppClient::trigger_account_update() {
+  std::string accountName = ""; 
+  m_pClient->reqAccountUpdates(true, accountName);
 
-    bool TestCppClient::should_take_profit_ = {should_take_profit_default_};
-    float TestCppClient::profit_minimum_threshold_ = {profit_minimum_threshold_default_};
-    float TestCppClient::profit_percent_threshold_ = {profit_percent_threshold_default_};
+}
 
+void TestCppClient::verifyMessageAPI( const std::string& apiData) {
+  printf("verifyMessageAPI: %s\n", apiData.c_str());
+}
 
-    bool TestCppClient::should_initiate_task_schedulers_ = {should_initiate_task_schedulers_default_};
+void TestCppClient::verifyCompleted( bool isSuccessful, const std::string& errorText) {
+  printf("verifyCompleted. IsSuccessful: %d - Error: %s\n", isSuccessful, errorText.c_str());
+}
 
-    int TestCppClient::threadpool_size_ = {threadpool_size_default_};
+void TestCppClient::verifyAndAuthMessageAPI( const std::string& apiDatai, const std::string& xyzChallenge) {
+  printf("verifyAndAuthMessageAPI: %s %s\n", apiDatai.c_str(), xyzChallenge.c_str());
+}
 
-    std::unique_ptr<ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>> TestCppClient::threadpool_priority_;
-    CurrentPositionsActions::CurrentPositionsActions() {
+void TestCppClient::verifyAndAuthCompleted( bool isSuccessful, const std::string& errorText) {
+  printf("verifyAndAuthCompleted. IsSuccessful: %d - Error: %s\n", isSuccessful, errorText.c_str());
+  if (isSuccessful)
+    m_pClient->startApi();
+}
 
+//! [displaygrouplist]
+void TestCppClient::displayGroupList( int reqId, const std::string& groups) {
+  printf("Display Group List. ReqId: %d, Groups: %s\n", reqId, groups.c_str());
+}
+//! [displaygrouplist]
+
+//! [displaygroupupdated]
+void TestCppClient::displayGroupUpdated( int reqId, const std::string& contractInfo) {
+  std::cout << "Display Group Updated. ReqId: " << reqId << ", Contract Info: " << contractInfo << std::endl;
+}
+//! [displaygroupupdated]
+
+//! [positionmulti]
+void TestCppClient::positionMulti( int reqId, const std::string& account,const std::string& modelCode, const Contract& contract, Decimal pos, double avgCost) {
+  printf("Position Multi. Request: %d, Account: %s, ModelCode: %s, Symbol: %s, SecType: %s, Currency: %s, Position: %s, Avg Cost: %s\n", reqId, account.c_str(), modelCode.c_str(), contract.symbol.c_str(), contract.secType.c_str(), contract.currency.c_str(), DecimalFunctions::decimalStringToDisplay(pos).c_str(), Utils::doubleMaxString(avgCost).c_str());
+}
+//! [positionmulti]
+
+//! [positionmultiend]
+void TestCppClient::positionMultiEnd( int reqId) {
+  printf("Position Multi End. Request: %d\n", reqId);
+}
+//! [positionmultiend]
+
+//! [accountupdatemulti]
+void TestCppClient::accountUpdateMulti( int reqId, const std::string& account, const std::string& modelCode, const std::string& key, const std::string& value, const std::string& currency) {
+  printf("AccountUpdate Multi. Request: %d, Account: %s, ModelCode: %s, Key, %s, Value: %s, Currency: %s\n", reqId, account.c_str(), modelCode.c_str(), key.c_str(), value.c_str(), currency.c_str());
+}
+//! [accountupdatemulti]
+
+//! [accountupdatemultiend]
+void TestCppClient::accountUpdateMultiEnd( int reqId) {
+  printf("Account Update Multi End. Request: %d\n", reqId);
+}
+//! [accountupdatemultiend]
+
+//! [securityDefinitionOptionParameter]
+void TestCppClient::securityDefinitionOptionalParameter(int reqId, const std::string& exchange, int underlyingConId, const std::string& tradingClass,
+    const std::string& multiplier, const std::set<std::string>& expirations, const std::set<double>& strikes) {
+  printf("Security Definition Optional Parameter. Request: %d, Exchange: %s, UnderlyingConId: %d, Trading Class: %s, Multiplier: %s, Expirations (%zu): ",
+      reqId, exchange.c_str(), underlyingConId, tradingClass.c_str(), multiplier.c_str(), expirations.size());
+
+  bool first = true;
+  for (const auto& exp : expirations) {
+    printf("%s%s", first ? "" : ", ", exp.c_str());
+    first = false;
+  }
+
+  printf(", Strikes (%zu): ", strikes.size());
+  first = true;
+  for (const auto& strike : strikes) {
+    printf("%s%.2f", first ? "" : ", ", strike);
+    first = false;
+  }
+  printf("\n");
+}
+//! [securityDefinitionOptionParameter]
+
+//! [securityDefinitionOptionParameterEnd]
+void TestCppClient::securityDefinitionOptionalParameterEnd(int reqId) {
+  printf("Security Definition Optional Parameter End. Request: %d\n", reqId);
+}
+//! [securityDefinitionOptionParameterEnd]
+
+//! [softDollarTiers]
+void TestCppClient::softDollarTiers(int reqId, const std::vector<SoftDollarTier> &tiers) {
+  printf("Soft dollar tiers (%zu):", tiers.size());
+
+  for (unsigned int i = 0; i < tiers.size(); i++) {
+    printSoftDollarTier(tiers[i]);
+  }
+}
+//! [softDollarTiers]
+
+//! [familyCodes]
+void TestCppClient::familyCodes(const std::vector<FamilyCode> &familyCodes) {
+  printf("Family codes (%zu):\n", familyCodes.size());
+
+  for (unsigned int i = 0; i < familyCodes.size(); i++) {
+    printf("Family code [%d] - accountID: %s familyCodeStr: %s\n", i, familyCodes[i].accountID.c_str(), familyCodes[i].familyCodeStr.c_str());
+  }
+}
+//! [familyCodes]
+
+//! [symbolSamples]
+void TestCppClient::symbolSamples(int reqId, const std::vector<ContractDescription> &contractDescriptions) {
+  printf("Symbol Samples (total=%zu) reqId: %d\n", contractDescriptions.size(), reqId);
+
+  for (unsigned int i = 0; i < contractDescriptions.size(); i++) {
+    Contract contract = contractDescriptions[i].contract;
+    std::vector<std::string> derivativeSecTypes = contractDescriptions[i].derivativeSecTypes;
+    printf("Contract (%u): conId: %d, symbol: %s, secType: %s, primaryExchange: %s, currency: %s, ", i, contract.conId, contract.symbol.c_str(), contract.secType.c_str(), contract.primaryExchange.c_str(), contract.currency.c_str());
+    printf("Derivative Sec-types (%zu):", derivativeSecTypes.size());
+    for (unsigned int j = 0; j < derivativeSecTypes.size(); j++) {
+      printf(" %s", derivativeSecTypes[j].c_str());
     }
+    printf(", description: %s, issuerId: %s", contract.description.c_str(), contract.issuerId.c_str());
+    printf("\n");
+  }
+}
+//! [symbolSamples]
 
-    CurrentPositionsActions::~CurrentPositionsActions() {
+//! [mktDepthExchanges]
+void TestCppClient::mktDepthExchanges(const std::vector<DepthMktDataDescription> &depthMktDataDescriptions) {
+  printf("Mkt Depth Exchanges (%zu):\n", depthMktDataDescriptions.size());
 
+  for (unsigned int i = 0; i < depthMktDataDescriptions.size(); i++) {
+    printf("Depth Mkt Data Description [%d] - exchange: %s secType: %s listingExch: %s serviceDataType: %s aggGroup: %s\n", i,
+        depthMktDataDescriptions[i].exchange.c_str(),
+        depthMktDataDescriptions[i].secType.c_str(),
+        depthMktDataDescriptions[i].listingExch.c_str(),
+        depthMktDataDescriptions[i].serviceDataType.c_str(),
+        Utils::intMaxString(depthMktDataDescriptions[i].aggGroup).c_str());
+  }
+}
+//! [mktDepthExchanges]
+
+//! [tickNews]
+void TestCppClient::tickNews(int tickerId, time_t timeStamp, const std::string& providerCode, const std::string& articleId, const std::string& headline, const std::string& extraData) {
+  char timeStampStr[80];
+#if defined(IB_WIN32)
+  ctime_s(timeStampStr, sizeof(timeStampStr), &(timeStamp /= 1000));
+#else
+  ctime_r(&(timeStamp /= 1000), timeStampStr);
+#endif
+  printf("News Tick. TickerId: %d, TimeStamp: %s, ProviderCode: %s, ArticleId: %s, Headline: %s, ExtraData: %s\n", tickerId, timeStampStr, providerCode.c_str(), articleId.c_str(), headline.c_str(), extraData.c_str());
+}
+//! [tickNews]
+
+//! [smartcomponents]]
+void TestCppClient::smartComponents(int reqId, const SmartComponentsMap& theMap) {
+  printf("Smart components: (%zu):\n", theMap.size());
+
+  for (SmartComponentsMap::const_iterator i = theMap.begin(); i != theMap.end(); i++) {
+    printf(" bit number: %d exchange: %s exchange letter: %c\n", i->first, std::get<0>(i->second).c_str(), std::get<1>(i->second));
+  }
+}
+//! [smartcomponents]
+
+//! [tickReqParams]
+void TestCppClient::tickReqParams(int tickerId, double minTick, const std::string& bboExchange, int snapshotPermissions) { }
+//! [tickReqParams]
+
+//! [newsProviders]
+void TestCppClient::newsProviders(const std::vector<NewsProvider> &newsProviders) {
+  printf("News providers (%zu):\n", newsProviders.size());
+
+  for (unsigned int i = 0; i < newsProviders.size(); i++) {
+    printf("News provider [%d] - providerCode: %s providerName: %s\n", i, newsProviders[i].providerCode.c_str(), newsProviders[i].providerName.c_str());
+  }
+}
+//! [newsProviders]
+
+//! [newsArticle]
+void TestCppClient::newsArticle(int requestId, int articleType, const std::string& articleText) {
+  printf("News Article. Request Id: %d, Article Type: %d\n", requestId, articleType);
+  if (articleType == 0) {
+    printf("News Article Text (text or html): %s\n", articleText.c_str());
+  } else if (articleType == 1) {
+#if defined(IB_WIN32)
+    std::wstring path;
+    WCHAR s[MAX_PATH];
+    if (GetCurrentDirectoryW(MAX_PATH, s) == 0) {
+      printf("GetCurrentDirectoryW error\n");
+      return;
     }
-
-    TmuxManagement TestCppClient::tmux_management;
-
-    template<typename T>
-      void TmuxManagement::send_msg_to_last_ttys(const T&& msg) {
-
-        auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
-
-        std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_last_TMUX_warrior;
-
-        //   std::cout << "command:" << command << std::endl;
-        std::erase(command, '\n');
-        std::erase(command, '\r');
-
-
-        ::exec(command);
-
-
-        //  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
-        //
-        //  ::exec(command);
-      }
-
-    void TmuxManagement::populate_tmux_ttys() {
-
-      tmux_ttys_ = get_tmux_ttys();
-
-      std::cout << "tmux_result:" << std::endl;
-
-      fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
-
-      //  std::sort(tmux_ttys_.begin(),tmux_ttys_.end());
-      //
-      //  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
-
-
-      auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
-
-      std::string command = std::string("echo ") + std::string("hello tty:") +  the_last_TMUX_warrior  + std::string(" > ") + the_last_TMUX_warrior;
-
-      std::cout << command << std::endl;
-
-      ::exec(command);
-
-
-      command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
-
-      ::exec(command);
+    path = s + std::wstring(L"\\MST$06f53098.pdf");
+#elif defined(IB_POSIX)
+    std::string path;
+    char s[1024];
+    if (getcwd(s, sizeof(s)) == NULL) {
+      printf("getcwd() error\n");
+      return;
     }
+    path = s + std::string("/MST$06f53098.pdf");
+#endif
+    std::vector<std::uint8_t> bytes = Utils::base64_decode(articleText);
+    std::ofstream outfile(path, std::ios::out | std::ios::binary);
+    outfile.write((const char*)bytes.data(), bytes.size());
+#if defined(IB_WIN32)
+    printf("Binary/pdf article was saved to: %ls\n", path.c_str());
+#else
+    printf("Binary/pdf article was saved to: %s\n", path.c_str());
+#endif
+  }
+}
+//! [newsArticle]
 
-    void TmuxManagement::ctor_helpers() {
-      populate_tmux_ttys();
-    }
+void TestCppClient::historicalNews(int requestId, const std::string& time, const std::string& providerCode, const std::string& articleId, const std::string& headline) {}
+void TestCppClient::historicalNewsEnd(int requestId, bool hasMore) {}
 
-    void TmuxManagement::dtor_helpers() {
-    }
+//! [headTimestamp]
+void TestCppClient::headTimestamp(int reqId, const std::string& headTimestamp) {
+  printf( "Head time stamp. ReqId: %d - Head time stamp: %s,\n", reqId, headTimestamp.c_str());
 
-    TmuxManagement::TmuxManagement() {
-      ctor_helpers();
+}
+//! [headTimestamp]
 
-    }
-    TmuxManagement::~TmuxManagement() {
+//! [histogramData]
+void TestCppClient::histogramData(int reqId, const HistogramDataVector& data) {
+  printf("Histogram. ReqId: %d, data length: %zu\n", reqId, data.size());
 
-      dtor_helpers();
-    }
+  for (const HistogramEntry& entry : data) {
+    printf("\t price: %s, size: %s\n", Utils::doubleMaxString(entry.price).c_str(), DecimalFunctions::decimalStringToDisplay(entry.size).c_str());
+  }
+}
+//! [histogramData]
+
+//! [historicalDataUpdate]
+void TestCppClient::historicalDataUpdate(int reqId, const Bar& bar) {
+  printf( "HistoricalDataUpdate. ReqId: %d - Date: %s, Open: %s, High: %s, Low: %s, Close: %s, Volume: %s, Count: %s, WAP: %s\n", reqId, bar.time.c_str(),
+      Utils::doubleMaxString(bar.open).c_str(), Utils::doubleMaxString(bar.high).c_str(), Utils::doubleMaxString(bar.low).c_str(), Utils::doubleMaxString(bar.close).c_str(),
+      DecimalFunctions::decimalStringToDisplay(bar.volume).c_str(), Utils::intMaxString(bar.count).c_str(), DecimalFunctions::decimalStringToDisplay(bar.wap).c_str());
+}
+//! [historicalDataUpdate]
+
+//! [rerouteMktDataReq]
+void TestCppClient::rerouteMktDataReq(int reqId, int conid, const std::string& exchange) {
+  printf( "Re-route market data request. ReqId: %d, ConId: %d, Exchange: %s\n", reqId, conid, exchange.c_str());
+}
+//! [rerouteMktDataReq]
+
+//! [rerouteMktDepthReq]
+void TestCppClient::rerouteMktDepthReq(int reqId, int conid, const std::string& exchange) {
+  printf( "Re-route market depth request. ReqId: %d, ConId: %d, Exchange: %s\n", reqId, conid, exchange.c_str());
+}
+//! [rerouteMktDepthReq]
+
+//! [marketRule]
+void TestCppClient::marketRule(int marketRuleId, const std::vector<PriceIncrement> &priceIncrements) {
+  printf("Market Rule Id: %s\n", Utils::intMaxString(marketRuleId).c_str());
+  for (unsigned int i = 0; i < priceIncrements.size(); i++) {
+    printf("Low Edge: %s, Increment: %s\n", Utils::doubleMaxString(priceIncrements[i].lowEdge).c_str(), Utils::doubleMaxString(priceIncrements[i].increment).c_str());
+  }
+}
+//! [marketRule]
+
+//! [pnl]
+void TestCppClient::pnl(int reqId, double dailyPnL, double unrealizedPnL, double realizedPnL) {
+  printf("PnL. ReqId: %d, daily PnL: %s, unrealized PnL: %s, realized PnL: %s\n", reqId, Utils::doubleMaxString(dailyPnL).c_str(), Utils::doubleMaxString(unrealizedPnL).c_str(),
+      Utils::doubleMaxString(realizedPnL).c_str());
+}
+//! [pnl]
+
+//! [pnlsingle]
+void TestCppClient::pnlSingle(int reqId, Decimal pos, double dailyPnL, double unrealizedPnL, double realizedPnL, double value) {
+  printf("PnL Single. ReqId: %d, pos: %s, daily PnL: %s, unrealized PnL: %s, realized PnL: %s, value: %s\n", reqId, DecimalFunctions::decimalStringToDisplay(pos).c_str(), Utils::doubleMaxString(dailyPnL).c_str(),
+      Utils::doubleMaxString(unrealizedPnL).c_str(), Utils::doubleMaxString(realizedPnL).c_str(), Utils::doubleMaxString(value).c_str());
+}
+//! [pnlsingle]
+
+//! [historicalticks]
+void TestCppClient::historicalTicks(int reqId, const std::vector<HistoricalTick>& ticks, bool done) {
+  for (const HistoricalTick& tick : ticks) {
+    std::time_t t = tick.time;
+    char timeStr[80];
+#if defined(IB_WIN32)
+    ctime_s(timeStr, sizeof(timeStr), &t);
+#else
+    ctime_r(&t, timeStr);
+#endif
+    std::cout << "Historical tick. ReqId: " << reqId << ", time: " << timeStr << ", price: "<< Utils::doubleMaxString(tick.price).c_str()	<< ", size: " << DecimalFunctions::decimalStringToDisplay(tick.size).c_str() << std::endl;
+  }
+}
+//! [historicalticks]
+
+//! [historicalticksbidask]
+void TestCppClient::historicalTicksBidAsk(int reqId, const std::vector<HistoricalTickBidAsk>& ticks, bool done) {
+  for (const HistoricalTickBidAsk& tick : ticks) {
+    std::time_t t = tick.time;
+    char timeStr[80];
+#if defined(IB_WIN32)
+    ctime_s(timeStr, sizeof(timeStr), &t);
+#else
+    ctime_r(&t, timeStr);
+#endif
+    std::cout << "Historical tick bid/ask. ReqId: " << reqId << ", time: " << timeStr << ", price bid: "<< Utils::doubleMaxString(tick.priceBid).c_str()	<<
+      ", price ask: "<< Utils::doubleMaxString(tick.priceAsk).c_str() << ", size bid: " << DecimalFunctions::decimalStringToDisplay(tick.sizeBid).c_str() << ", size ask: " << DecimalFunctions::decimalStringToDisplay(tick.sizeAsk).c_str() <<
+      ", bidPastLow: " << tick.tickAttribBidAsk.bidPastLow << ", askPastHigh: " << tick.tickAttribBidAsk.askPastHigh << std::endl;
+  }
+}
+//! [historicalticksbidask]
+
+//! [historicaltickslast]
+void TestCppClient::historicalTicksLast(int reqId, const std::vector<HistoricalTickLast>& ticks, bool done) {
+  for (HistoricalTickLast tick : ticks) {
+    std::time_t t = tick.time;
+    char timeStr[80];
+#if defined(IB_WIN32)
+    ctime_s(timeStr, sizeof(timeStr), &t);
+#else
+    ctime_r(&t, timeStr);
+#endif
+    std::cout << "Historical tick last. ReqId: " << reqId << ", time: " << timeStr << ", price: "<< Utils::doubleMaxString(tick.price).c_str() <<
+      ", size: " << DecimalFunctions::decimalStringToDisplay(tick.size).c_str() << ", exchange: " << tick.exchange << ", special conditions: " << tick.specialConditions <<
+      ", unreported: " << tick.tickAttribLast.unreported << ", pastLimit: " << tick.tickAttribLast.pastLimit << std::endl;
+  }
+}
+//! [historicaltickslast]
+
+//! [tickbytickalllast]
+void TestCppClient::tickByTickAllLast(int reqId, int tickType, time_t time, double price, Decimal size, const TickAttribLast& tickAttribLast, const std::string& exchange, const std::string& specialConditions) {
+  char timeStr[80];
+#if defined(IB_WIN32)
+  ctime_s(timeStr, sizeof(timeStr), &time);
+#else
+  ctime_r(&time, timeStr);
+#endif
+  printf("Tick-By-Tick. ReqId: %d, TickType: %s, Time: %s, Price: %s, Size: %s, PastLimit: %d, Unreported: %d, Exchange: %s, SpecialConditions:%s\n",
+      reqId, (tickType == 1 ? "Last" : "AllLast"), timeStr, Utils::doubleMaxString(price).c_str(), DecimalFunctions::decimalStringToDisplay(size).c_str(), tickAttribLast.pastLimit, tickAttribLast.unreported, exchange.c_str(), specialConditions.c_str());
+}
+//! [tickbytickalllast]
+
+//! [tickbytickbidask]
+void TestCppClient::tickByTickBidAsk(int reqId, time_t time, double bidPrice, double askPrice, Decimal bidSize, Decimal askSize, const TickAttribBidAsk& tickAttribBidAsk) {
+  char timeStr[80];
+#if defined(IB_WIN32)
+  ctime_s(timeStr, sizeof(timeStr), &time);
+#else
+  ctime_r(&time, timeStr);
+#endif
+  printf("Tick-By-Tick. ReqId: %d, TickType: BidAsk, Time: %s, BidPrice: %s, AskPrice: %s, BidSize: %s, AskSize: %s, BidPastLow: %d, AskPastHigh: %d\n",
+      reqId, timeStr, Utils::doubleMaxString(bidPrice).c_str(), Utils::doubleMaxString(askPrice).c_str(), DecimalFunctions::decimalStringToDisplay(bidSize).c_str(), DecimalFunctions::decimalStringToDisplay(askSize).c_str(), tickAttribBidAsk.bidPastLow, tickAttribBidAsk.askPastHigh);
+}
+//! [tickbytickbidask]
+
+//! [tickbytickmidpoint]
+void TestCppClient::tickByTickMidPoint(int reqId, time_t time, double midPoint) {
+  char timeStr[80];
+#if defined(IB_WIN32)
+  ctime_s(timeStr, sizeof(timeStr), &time);
+#else
+  ctime_r(&time, timeStr);
+#endif
+  printf("Tick-By-Tick. ReqId: %d, TickType: MidPoint, Time: %s, MidPoint: %s\n", reqId, timeStr, Utils::doubleMaxString(midPoint).c_str());
+}
+//! [tickbytickmidpoint]
+
+//! [orderbound]
+void TestCppClient::orderBound(long long permId, int clientId, int orderId) {
+  printf("Order bound. PermId: %s, clientId: %s, orderId: %s\n", Utils::llongMaxString(permId).c_str(), Utils::intMaxString(clientId).c_str(), Utils::intMaxString(orderId).c_str());
+}
+//! [orderbound]
+
+void TestCppClient::completedOrder(const Contract& contract, const Order& order, const OrderState& orderState) {}
+void TestCppClient::completedOrdersEnd() {}
+
+//! [replacefaend]
+void TestCppClient::replaceFAEnd(int reqId, const std::string& text) {
+  printf("Replace FA End. Request: %d, Text:%s\n", reqId, text.c_str());
+}
+//! [replacefaend]
+
+//! [wshMetaData]
+void TestCppClient::wshMetaData(int reqId, const std::string& dataJson) {
+  printf("WSH Meta Data. ReqId: %d, dataJson: %s\n", reqId, dataJson.c_str());
+}
+//! [wshMetaData]
+
+//! [wshEventData]
+void TestCppClient::wshEventData(int reqId, const std::string& dataJson) {
+  printf("WSH Event Data. ReqId: %d, dataJson: %s\n", reqId, dataJson.c_str());
+}
+//! [wshEventData]
+
+//! [historicalSchedule]
+void TestCppClient::historicalSchedule(int reqId, const std::string& startDateTime, const std::string& endDateTime, const std::string& timeZone, const std::vector<HistoricalSession>& sessions) {
+  printf("Historical Schedule. ReqId: %d, Start: %s, End: %s, TimeZone: %s\n", reqId, startDateTime.c_str(), endDateTime.c_str(), timeZone.c_str());
+  for (unsigned int i = 0; i < sessions.size(); i++) {
+    printf("\tSession. Start: %s, End: %s, RefDate: %s\n", sessions[i].startDateTime.c_str(), sessions[i].endDateTime.c_str(), sessions[i].refDate.c_str());
+  }
+}
+//! [historicalSchedule]
+
+//! [userInfo]
+void TestCppClient::userInfo(int reqId, const std::string& whiteBrandingId) {
+  printf("User Info. ReqId: %d, WhiteBrandingId: %s\n", reqId, whiteBrandingId.c_str());
+}
+//! [userInfo]
+
+//! [currenttimeinmillis]
+void TestCppClient::currentTimeInMillis(time_t timeInMillis) {
+  struct tm timeinfo;
+  char currentTimeInMillis[80];
+  time_t time = timeInMillis / 1000;
+  time_t millis = timeInMillis - (time * 1000);
+#if defined(IB_WIN32)
+  localtime_s(&timeinfo, &time);
+#else
+  localtime_r(&time, &timeinfo);
+#endif
+  strftime(currentTimeInMillis, sizeof(currentTimeInMillis), "%b %d, %Y %H:%M:%S", &timeinfo);
+  printf("The current date/time in millis is %llu : %s.%03llu\n", static_cast<unsigned long long>(timeInMillis), currentTimeInMillis, static_cast<unsigned long long>(millis));
+}
+//! [currenttimeinmillis]
+
+// protobuf
+#if !defined(USE_WIN_DLL)
+void TestCppClient::execDetailsProtoBuf(const protobuf::ExecutionDetails& executionDetailsProto) {}
+void TestCppClient::execDetailsEndProtoBuf(const protobuf::ExecutionDetailsEnd& executionDetailsEndProto) {}
+void TestCppClient::orderStatusProtoBuf(const protobuf::OrderStatus& orderStatusProto) {
+  //printf("Order Status: %s\n", orderStatusProto.ShortDebugString().c_str());
+
+  // std::cout << " now printing account summary:" << std::endl;
+  //  m_pClient->reqAccountSummary(++m_orderId, "All", AccountSummaryTags::getAllTags());
 
 
-    template<typename T>
-      void TmuxManagement::send_msg_to_last_ttys(const T&& msg, int index) {
 
-        auto the_TMUX_warrior = tmux_ttys_.at(index); // Warrior is where teh actual message is sent
-        std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_TMUX_warrior;
-        std::cout << command << std::endl;
-        ::exec(command);
-      }
+}
+void TestCppClient::openOrderProtoBuf(const protobuf::OpenOrder& openOrderProto) {
+  //  printf("Open Order Protobuf: %s\n", openOrderProto.ShortDebugString().c_str());
+  std::cout << "Open Order Protobuf" << std::endl;
+
+  int32_t order_id = openOrderProto.orderid();
+
+  // 2. Accessing Contract fields (nested message)
+  const auto& contract = openOrderProto.contract();
+  std::string symbol = contract.symbol();
+  std::string sec_type = contract.sectype();
+
+  // 3. Accessing Order parameters (nested message)
+  const auto& order = openOrderProto.order();
+  std::string action = order.action();       // e.g., "BUY" or "SELL"
+  double total_quantity = ::atof(order.totalquantity().c_str());
+  double lmt_price = order.lmtprice();
+  // 4. Accessing OrderState metrics (nested message)
+  const auto& order_state = openOrderProto.orderstate();
+  std::string status = order_state.status(); // e.g., "Submitted"
+
+
+  std::cout << "order_id:" << order_id << "\n "  << "symbol:" << symbol << "\n action:" << action << "\ntotal_quantity:" << total_quantity << "\n lmt_price:" << lmt_price << "\n status:" <<  status << std::endl;
+
+
+
+
+}
+void TestCppClient::openOrdersEndProtoBuf(const protobuf::OpenOrdersEnd& openOrdersEndProto) {
+  printf("Open Orders Proto End: %s\n", openOrdersEndProto.ShortDebugString().c_str());
+
+
+}
+
+//void TestCppClient::openOrder(OrderId orderId, const Contract& contract, 
+//                          const Order& order, const OrderState& orderState) {
+//    // Process each open order here
+//}
+
+//void TestCppClient::orderStatus(OrderId orderId, const std::string& status, 
+//                            double filled, double remaining, double avgFillPrice, 
+//                            int permId, int parentId, double lastFillPrice, 
+//                            int clientId, const std::string& whyHeld) {
+//    // Track order status updates
+//}
+//
+
+
+
+
+void TestCppClient::errorProtoBuf(const protobuf::ErrorMessage& errorProto) {}
+void TestCppClient::completedOrderProtoBuf(const protobuf::CompletedOrder& completedOrderProto) {
+  printf("Completed Order: %s\n", completedOrderProto.ShortDebugString().c_str());
+}
+void TestCppClient::completedOrdersEndProtoBuf(const protobuf::CompletedOrdersEnd& completedOrdersEndProto) {
+  printf("Completed Orders End: %s\n", completedOrdersEndProto.ShortDebugString().c_str());
+}
+void TestCppClient::orderBoundProtoBuf(const protobuf::OrderBound& orderBoundProto) {}
+void TestCppClient::contractDataProtoBuf(const protobuf::ContractData& contractDataProto) {}
+void TestCppClient::bondContractDataProtoBuf(const protobuf::ContractData& contractDataProto) {}
+void TestCppClient::contractDataEndProtoBuf(const protobuf::ContractDataEnd& contractDataEndProto) {}
+void TestCppClient::tickPriceProtoBuf(const protobuf::TickPrice& tickPriceProto) {
+  // printf("Tick Price: %s\n", tickPriceProto.ShortDebugString().c_str());
+}
+void TestCppClient::tickSizeProtoBuf(const protobuf::TickSize& tickSizeProto) {
+  // printf("Tick Size: %s\n", tickSizeProto.ShortDebugString().c_str());
+}
+void TestCppClient::tickOptionComputationProtoBuf(const protobuf::TickOptionComputation& tickOptionComputationProto) {
+  // printf("Tick Option Computation: %s\n", tickOptionComputationProto.ShortDebugString().c_str());
+}
+void TestCppClient::tickGenericProtoBuf(const protobuf::TickGeneric& tickGenericProto) {
+  //  printf("Tick Generic: %s\n", tickGenericProto.ShortDebugString().c_str());
+}
+void TestCppClient::tickStringProtoBuf(const protobuf::TickString& tickStringProto) {
+  //  printf("Tick String: %s\n", tickStringProto.ShortDebugString().c_str());
+}
+void TestCppClient::tickSnapshotEndProtoBuf(const protobuf::TickSnapshotEnd& tickSnapshotEndProto) {
+  // printf("Tick Snapshot End: %s\n", tickSnapshotEndProto.ShortDebugString().c_str());
+}
+void TestCppClient::updateMarketDepthProtoBuf(const protobuf::MarketDepth& marketDepthProto) {}
+void TestCppClient::updateMarketDepthL2ProtoBuf(const protobuf::MarketDepthL2& marketDepthL2Proto) {}
+void TestCppClient::marketDataTypeProtoBuf(const protobuf::MarketDataType& marketDataTypeProto) {}
+void TestCppClient::tickReqParamsProtoBuf(const protobuf::TickReqParams& tickReqParamsProto) {
+  //  std::ostringstream oss;
+  //  if (tickReqParamsProto.has_reqid()) oss << "Ticker Id: " << tickReqParamsProto.reqid() << ", ";
+  //  if (tickReqParamsProto.has_mintick()) oss << " MinTick: " << tickReqParamsProto.mintick() << ", ";
+  //  if (tickReqParamsProto.has_bboexchange()) {
+  //    oss << "BboExchange: " << tickReqParamsProto.bboexchange() << ", ";
+  //    m_bboExchange = tickReqParamsProto.bboexchange();
+  //  }
+  //  if (tickReqParamsProto.has_snapshotpermissions()) oss << "SnapshotPermissions: " << tickReqParamsProto.snapshotpermissions() << ", ";
+  //  if (tickReqParamsProto.has_lastpriceprecision()) oss << "LastPricePrecision: " << tickReqParamsProto.lastpriceprecision() << ", ";
+  //  if (tickReqParamsProto.has_lastsizeprecision()) oss << "lastSizePrecision: " << tickReqParamsProto.lastsizeprecision();
+  //  printf("Tick Req Params. %s\n", oss.str().c_str());
+}
+void TestCppClient::updateAccountValueProtoBuf(const protobuf::AccountValue& accountValueProto) {}
+void TestCppClient::updatePortfolioProtoBuf(const protobuf::PortfolioValue& portfolioValueProto) {}
+void TestCppClient::updateAccountTimeProtoBuf(const protobuf::AccountUpdateTime& accountUpdateTimeProto) {}
+void TestCppClient::accountDataEndProtoBuf(const protobuf::AccountDataEnd& accountDataEndProto) {}
+void TestCppClient::managedAccountsProtoBuf(const protobuf::ManagedAccounts& managedAccountsProto) {}
+void TestCppClient::positionProtoBuf(const protobuf::Position& positionProto) {}
+void TestCppClient::positionEndProtoBuf(const protobuf::PositionEnd& positionEndProto) {}
+void TestCppClient::accountSummaryProtoBuf(const protobuf::AccountSummary& accountSummaryProto) {}
+void TestCppClient::accountSummaryEndProtoBuf(const protobuf::AccountSummaryEnd& accountSummaryEndProto) {}
+void TestCppClient::positionMultiProtoBuf(const protobuf::PositionMulti& positionMultiProto) {}
+void TestCppClient::positionMultiEndProtoBuf(const protobuf::PositionMultiEnd& positionMultiEndProto) {}
+void TestCppClient::accountUpdateMultiProtoBuf(const protobuf::AccountUpdateMulti& accountUpdateMultiProto) {}
+void TestCppClient::accountUpdateMultiEndProtoBuf(const protobuf::AccountUpdateMultiEnd& accountUpdateMultiEndProto) {}
+void TestCppClient::historicalDataProtoBuf(const protobuf::HistoricalData& historicalDataProto) {}
+void TestCppClient::historicalDataUpdateProtoBuf(const protobuf::HistoricalDataUpdate& historicalDataUpdateProto) {}
+void TestCppClient::historicalDataEndProtoBuf(const protobuf::HistoricalDataEnd& historicalDataEndProto) {}
+void TestCppClient::realTimeBarTickProtoBuf(const protobuf::RealTimeBarTick& realTimeBarTickProto) {}
+void TestCppClient::headTimestampProtoBuf(const protobuf::HeadTimestamp& headTimestampProto) {}
+void TestCppClient::histogramDataProtoBuf(const protobuf::HistogramData& histogramDataProto) {}
+void TestCppClient::historicalTicksProtoBuf(const protobuf::HistoricalTicks& historicalTicksProto) {}
+void TestCppClient::historicalTicksBidAskProtoBuf(const protobuf::HistoricalTicksBidAsk& historicalTicksBidAskProto) {}
+void TestCppClient::historicalTicksLastProtoBuf(const protobuf::HistoricalTicksLast& historicalTicksLastProto) {}
+void TestCppClient::tickByTickDataProtoBuf(const protobuf::TickByTickData& tickByTickDataProto) {}
+void TestCppClient::updateNewsBulletinProtoBuf(const protobuf::NewsBulletin& newsBulletinProto) {}
+void TestCppClient::newsArticleProtoBuf(const protobuf::NewsArticle& newsArticleProto) {}
+void TestCppClient::newsProvidersProtoBuf(const protobuf::NewsProviders& newsProvidersProto) {}
+void TestCppClient::historicalNewsProtoBuf(const protobuf::HistoricalNews& historicalNewsProto) {
+  printf("Historical News: %s\n", historicalNewsProto.ShortDebugString().c_str());
+}
+void TestCppClient::historicalNewsEndProtoBuf(const protobuf::HistoricalNewsEnd& historicalNewsEndProto) {
+  printf("Historical News End: %s\n", historicalNewsEndProto.ShortDebugString().c_str());
+}
+void TestCppClient::wshMetaDataProtoBuf(const protobuf::WshMetaData& wshMetaDataProto) {}
+void TestCppClient::wshEventDataProtoBuf(const protobuf::WshEventData& wshEventDataProto) {}
+void TestCppClient::tickNewsProtoBuf(const protobuf::TickNews& tickNewsProto) {}
+void TestCppClient::scannerParametersProtoBuf(const protobuf::ScannerParameters& scannerParametersProto) {}
+void TestCppClient::scannerDataProtoBuf(const protobuf::ScannerData& scannerDataProto) {}
+void TestCppClient::fundamentalsDataProtoBuf(const protobuf::FundamentalsData& fundamentalsDataProto) {}
+void TestCppClient::pnlProtoBuf(const protobuf::PnL& pnlProto) {}
+void TestCppClient::pnlSingleProtoBuf(const protobuf::PnLSingle& pnlSingleProto) {}
+void TestCppClient::receiveFAProtoBuf(const protobuf::ReceiveFA& receiveFAProto) {}
+void TestCppClient::replaceFAEndProtoBuf(const protobuf::ReplaceFAEnd& replaceFAEndProto) {}
+void TestCppClient::commissionAndFeesReportProtoBuf(const protobuf::CommissionAndFeesReport& commissionAndFeesReportProto) {}
+void TestCppClient::historicalScheduleProtoBuf(const protobuf::HistoricalSchedule& historicalScheduleProto) {}
+void TestCppClient::rerouteMarketDataRequestProtoBuf(const protobuf::RerouteMarketDataRequest& rerouteMarketDataRequestProto) {}
+void TestCppClient::rerouteMarketDepthRequestProtoBuf(const protobuf::RerouteMarketDepthRequest& rerouteMarketDepthRequestProto) {}
+void TestCppClient::secDefOptParameterProtoBuf(const protobuf::SecDefOptParameter& secDefOptParameterProto) {}
+void TestCppClient::secDefOptParameterEndProtoBuf(const protobuf::SecDefOptParameterEnd& secDefOptParameterEndProto) {}
+void TestCppClient::softDollarTiersProtoBuf(const protobuf::SoftDollarTiers& softDollarTiersProto) {}
+void TestCppClient::familyCodesProtoBuf(const protobuf::FamilyCodes& familyCodesProto) {}
+void TestCppClient::symbolSamplesProtoBuf(const protobuf::SymbolSamples& symbolSamplesProto) {}
+void TestCppClient::smartComponentsProtoBuf(const protobuf::SmartComponents& smartComponentsProto) {}
+void TestCppClient::marketRuleProtoBuf(const protobuf::MarketRule& marketRuleProto) {}
+void TestCppClient::userInfoProtoBuf(const protobuf::UserInfo& userInfoProto) {}
+void TestCppClient::nextValidIdProtoBuf(const protobuf::NextValidId& nextValidIdProto) {}
+void TestCppClient::currentTimeProtoBuf(const protobuf::CurrentTime& currentTimeProto) {}
+void TestCppClient::currentTimeInMillisProtoBuf(const protobuf::CurrentTimeInMillis& currentTimeInMillisProto) {}
+void TestCppClient::verifyMessageApiProtoBuf(const protobuf::VerifyMessageApi& verifyMessageApiProto) {}
+void TestCppClient::verifyCompletedProtoBuf(const protobuf::VerifyCompleted& verifyCompletedProto) {}
+void TestCppClient::displayGroupListProtoBuf(const protobuf::DisplayGroupList& displayGroupListProto) {}
+void TestCppClient::displayGroupUpdatedProtoBuf(const protobuf::DisplayGroupUpdated& displayGroupUpdatedProto) {}
+void TestCppClient::marketDepthExchangesProtoBuf(const protobuf::MarketDepthExchanges& marketDepthExchangesProto) {}
+void TestCppClient::configResponseProtoBuf(const protobuf::ConfigResponse& configResponseProto) {
+  printf("==== Config Response Begin ====\n");
+  printf("%s\n", configResponseProto.DebugString().c_str());
+  printf("==== Config Response End ====\n");
+}
+void TestCppClient::updateConfigResponseProtoBuf(const protobuf::UpdateConfigResponse& updateConfigResponseProto) {
+  printf("==== Update Config Response Begin ====\n");
+  printf("%s\n", updateConfigResponseProto.DebugString().c_str());
+  printf("==== Update Config Response End ====\n");
+}
+
+void TestCppClient::initiate_task_schedulers() {
+  DailyScheduledTask daily_3_00(*scheduler_threadpool_, 3, 00, 0, [] {
+      std::cout << "[worker] Daily 3:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_3_15(*scheduler_threadpool_, 3, 15, 0, [] {
+      std::cout << "[worker] Daily 3:15 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  // Fire every day at 16:15:00 local time.
+  DailyScheduledTask daily_4_00(*scheduler_threadpool_, 4, 00, 0, [] {
+      std::cout << "[worker] Daily 4:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_8_00(*scheduler_threadpool_, 8, 0, 0, [] {
+      std::cout << "[worker] Daily 8:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_8_45(*scheduler_threadpool_, 8, 45, 0, [] {
+      std::cout << "[worker] Daily 8:45 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_8_55(*scheduler_threadpool_, 8, 55, 0, [] {
+      std::cout << "[worker] Daily 8:55 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+  DailyScheduledTask daily_9_15(*scheduler_threadpool_, 9, 15, 0, [] {
+      std::cout << "[worker] Daily 9:15 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_10_00(*scheduler_threadpool_, 10, 00, 0, [] {
+      std::cout << "[worker] Daily 10:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_12_00(*scheduler_threadpool_, 12, 00, 0, [] {
+      std::cout << "[worker] Daily 12:00 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_14_30(*scheduler_threadpool_, 14, 30, 0, [] {
+      std::cout << "[worker] Daily 2:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+
+
+  DailyScheduledTask daily_15_30(*scheduler_threadpool_, 15, 30, 0, [] {
+      std::cout << "[worker] Daily 3:30 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+  DailyScheduledTask daily_15_45(*scheduler_threadpool_, 15, 45, 0, [] {
+      std::cout << "[worker] Daily 3:45 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_15_48(*scheduler_threadpool_, 15, 48, 0, [] {
+      std::cout << "[worker] Daily 3:48 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_15_50(*scheduler_threadpool_, 15, 50, 0, [] {
+      std::cout << "[worker] Daily 3:50 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_15_55(*scheduler_threadpool_, 15, 55, 0, [] {
+      std::cout << "[worker] Daily 3:55 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_16_00(*scheduler_threadpool_, 16, 00, 0, [] {
+      std::cout << "[worker] Daily 4:00 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_16_30(*scheduler_threadpool_, 16, 30, 0, [] {
+      std::cout << "[worker] Daily 4:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_17_30(*scheduler_threadpool_, 17, 30, 0, [] {
+      std::cout << "[worker] Daily 5:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_18_30(*scheduler_threadpool_, 18, 30, 0, [] {
+      std::cout << "[worker] Daily 6:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_19_30(*scheduler_threadpool_, 19, 30, 0, [] {
+      std::cout << "[worker] Daily 7:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_19_45(*scheduler_threadpool_, 19, 45, 0, [] {
+      std::cout << "[worker] Daily 7:45 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_01(*scheduler_threadpool_, 20, 01, 0, [] {
+      std::cout << "[worker] Daily 8:01 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_15(*scheduler_threadpool_, 20, 15, 0, [] {
+      std::cout << "[worker] Daily 8:15 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_30(*scheduler_threadpool_, 20, 30, 0, [] {
+      std::cout << "[worker] Daily 8:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_3_45(*scheduler_threadpool_, 3, 45, 0, [] {
+      std::cout << "[worker] Daily 3:45 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "TIMED JOB scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      is_terminated = true;
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::green) | bg(fmt::color::black), "TIMED JOB finished\n");
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+}
+
+void TestCppClient::ctor_helpers() {
+  has_initial_account_update_download_completed_ = has_initial_account_update_download_completed_default_;
+portfolio_update_trajectory_.set_capacity(portfolio_update_trajectory_size_);
+
+  tracked_assets_.insert("SPY");
+  tracked_assets_.insert("PILL");
+  tracked_assets_.insert("JNUG");
+  tracked_assets_.insert("SOXS");
+  tracked_assets_.insert("NVDA");
+  tracked_assets_.insert("INTC");
+
+
+  tracked_assets_IDs_;
+  tracked_assets_IDs_symbol_map_;
+
+  for(auto& symbol:tracked_assets_) {
+    std::cout << "tracking "<< symbol << std::endl;
+
+    auto contractID = m_orderId++;
+    tracked_assets_IDs_.emplace_back(contractID);
+    tracked_assets_IDs_symbol_map_inverse_[contractID] = symbol;
+    tracked_assets_IDs_symbol_map_[symbol] = contractID;
+
+
+    Contract contract;
+    contract.symbol = symbol;
+    contract.secType = "STK";
+    contract.exchange = "SMART";
+    contract.currency = "USD";
+
+    // Request market data (tickerId = 1001, snapshot = false)
+    // m_pClient->reqMktData(contractID, contract, "", true, false, TagValueListSPtr());
+
+
+
+    //auto fut = scheduler_threadpool_->enqueue([](){});
+    //tracked_assets_IDs_futures_.emplace_back(std::move(fut));
+  }
+
+
+
+
+
+
+
+
+  contract_template.symbol = {"LLY"};
+  contract_template.secType =  {"STK"};
+  contract_template.exchange = {"SMART"};
+  contract_template.currency = {"USD"};
+  contract_template.exchange = {"SMART"};
+  contract_template.primaryExchange = {"NASDAQ"};
+
+  print_once_positions_ = print_once_positions_default_;
+
+  account_value_ = account_value_default_;
+  buying_power_ = buying_power_default_;
+
+  threadpool_priority_.reset(new ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>(thread_pool_session_scheduler_size_));
+  scheduler_threadpool_.reset(new ThreadPoolSessionScheduler(thread_pool_session_scheduler_size_));
+
+  if(should_initiate_task_schedulers_){
+    initiate_task_schedulers();
+  }
+
+
+
+  //  {
+  //    auto t = std::chrono::system_clock::to_time_t(daily.next_fire_time());
+  //    std::cout << "Next fire time: " << std::ctime(&t);
+  //  }
+  //
+}
+
+
+bool TestCppClient::req_position_end_cond_var_trigger_ = {req_position_end_cond_var_trigger_default_};
+std::mutex TestCppClient::req_position_end_mtx_;
+std::condition_variable TestCppClient::req_position_end_cond_var_;
+
+
+std::condition_variable TestCppClient::req_position_price_end_cond_var_;
+std::mutex TestCppClient::req_position_price_end_mtx_;
+bool TestCppClient::req_position_price_end_cond_var_trigger_ = {req_position_price_end_cond_var_trigger_default_};
+
+std::condition_variable TestCppClient::account_update_end_cond_var_;
+std::mutex TestCppClient::account_update_end_mtx_;
+bool TestCppClient::account_update_end_cond_var_trigger_ = {account_update_end_cond_var_trigger_default_};
+
+
+
+std::condition_variable TestCppClient::req_open_oder_end_cond_var_;
+std::mutex TestCppClient::req_open_oder_end_mtx_;
+bool TestCppClient::req_open_oder_cond_var_trigger_ = {req_open_oder_cond_var_trigger_default_};
+
+
+
+std::mutex TestCppClient::req_open_oder_status_update_mtx_;
+std::map<int,OrderStatus> TestCppClient::open_order_status_update_;
+
+
+std::mutex TestCppClient::req_open_oder_status_update_proto_mtx_;
+std::map<std::string,std::map<int,OrderStatus>> TestCppClient::open_order_status_proto_update_;
+
+
+
+std::unique_ptr<ThreadPoolSessionScheduler> TestCppClient::scheduler_threadpool_;
+
+std::map<int, AssetPrice> TestCppClient::current_price_list_;
+
+Json::Value CurrentAccountState::account_update_state_;
+Json::Value TestCppClient::account_summary_;
+
+std::mutex TestCppClient::open_order_update_lock_mtx_;
+
+
+bool TestCppClient::should_take_profit_ = {should_take_profit_default_};
+float TestCppClient::profit_minimum_threshold_ = {profit_minimum_threshold_default_};
+float TestCppClient::profit_percent_threshold_ = {profit_percent_threshold_default_};
+
+
+bool TestCppClient::should_initiate_task_schedulers_ = {should_initiate_task_schedulers_default_};
+
+int TestCppClient::threadpool_size_ = {threadpool_size_default_};
+
+std::unique_ptr<ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>> TestCppClient::threadpool_priority_;
+CurrentPositionsActions::CurrentPositionsActions() {
+
+}
+
+CurrentPositionsActions::~CurrentPositionsActions() {
+
+}
+
+TmuxManagement TestCppClient::tmux_management;
+
+template<typename T>
+void TmuxManagement::send_msg_to_last_ttys(const T&& msg) {
+
+  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
+
+  std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_last_TMUX_warrior;
+
+  //   std::cout << "command:" << command << std::endl;
+  std::erase(command, '\n');
+  std::erase(command, '\r');
+
+
+  ::exec(command);
+
+
+  //  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
+  //
+  //  ::exec(command);
+}
+
+void TmuxManagement::populate_tmux_ttys() {
+
+  tmux_ttys_ = get_tmux_ttys();
+
+  std::cout << "tmux_result:" << std::endl;
+
+  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
+
+  //  std::sort(tmux_ttys_.begin(),tmux_ttys_.end());
+  //
+  //  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
+
+
+  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
+
+  std::string command = std::string("echo ") + std::string("hello tty:") +  the_last_TMUX_warrior  + std::string(" > ") + the_last_TMUX_warrior;
+
+  std::cout << command << std::endl;
+
+  ::exec(command);
+
+
+  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
+
+  ::exec(command);
+}
+
+void TmuxManagement::ctor_helpers() {
+  populate_tmux_ttys();
+}
+
+void TmuxManagement::dtor_helpers() {
+}
+
+TmuxManagement::TmuxManagement() {
+  ctor_helpers();
+
+}
+TmuxManagement::~TmuxManagement() {
+
+  dtor_helpers();
+}
+
+
+template<typename T>
+void TmuxManagement::send_msg_to_last_ttys(const T&& msg, int index) {
+
+  auto the_TMUX_warrior = tmux_ttys_.at(index); // Warrior is where teh actual message is sent
+  std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_TMUX_warrior;
+  std::cout << command << std::endl;
+  ::exec(command);
+}
 #endif

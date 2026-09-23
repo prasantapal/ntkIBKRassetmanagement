@@ -155,9 +155,12 @@ int main(int argc, char** argv) {
 
     std::this_thread::sleep_for(std::chrono::seconds(napping_time));
     std::cout << "napping for " << napping_time << " secs" << std::endl;
+    client.account_summary();
+    client.trigger_account_update();
+
     while( client.isConnected()) {
 
-        client.print_position_details();
+      client.print_position_details();
 
       //     std::string asset = {"SOXS"};
       //     auto price = client.get_ticker_price(asset);
