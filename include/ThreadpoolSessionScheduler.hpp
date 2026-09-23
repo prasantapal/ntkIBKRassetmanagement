@@ -16,7 +16,8 @@
 //     `catch_up_if_missed` is true, otherwise it rolls to the next day.
 //   - Safe to stop cleanly via `stop()`; destructor also stops.
 
-#ifdef THREADPOOL_SESSION_SCHEDULER
+#ifndef THREADPOOL_SESSION_SCHEDULER
+#define THREADPOOL_SESSION_SCHEDULER
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -100,8 +101,32 @@ private:
 
 // Next occurrence (system_clock time_point) of local hour:minute:second.
 // If `after` (default: now) is already past today's slot, rolls to tomorrow.
-std::chrono::system_clock::time_point
-next_time_at(int hour, int minute, int second = 0,
+
+// ------------------------- Recurring scheduler -----------------------------
+
+class DailyScheduledTask {
+public:
+    // hour/minute/second: local wall-clock fire time, every day.
+    // catch_up_if_missed: if true and we start (or wake) past today's slot
+    //   by more than a few seconds, fire immediately once, then resume the
+    //   normal daily cadence from the following day.
+    DailyScheduledTask(ThreadPoolSessionScheduler& pool,
+                        int hour, int minute, int second,
+                        std::function<void()> task,
+                        bool catch_up_if_missed = true)
+        : pool_(pool)
+        , hour_(hour), minute_(minute), second_(second)
+        , task_(std::move(task))
+        , catch_up_if_missed_(catch_up_if_missed)
+    {
+        worker_ = std::thread([this] { run(); });
+    }
+
+
+    ~DailyScheduledTask() { stop(); if (worker_.joinable()) worker_.join(); }
+
+
+std::chrono::system_clock::time_point next_time_point_at(int hour, int minute, int second = 0,
              std::chrono::system_clock::time_point after =
                  std::chrono::system_clock::now())
 {
@@ -135,27 +160,7 @@ next_time_at(int hour, int minute, int second = 0,
     return target;
 }
 
-// ------------------------- Recurring scheduler -----------------------------
 
-class DailyScheduledTask {
-public:
-    // hour/minute/second: local wall-clock fire time, every day.
-    // catch_up_if_missed: if true and we start (or wake) past today's slot
-    //   by more than a few seconds, fire immediately once, then resume the
-    //   normal daily cadence from the following day.
-    DailyScheduledTask(ThreadPoolSessionScheduler& pool,
-                        int hour, int minute, int second,
-                        std::function<void()> task,
-                        bool catch_up_if_missed = false)
-        : pool_(pool)
-        , hour_(hour), minute_(minute), second_(second)
-        , task_(std::move(task))
-        , catch_up_if_missed_(catch_up_if_missed)
-    {
-        worker_ = std::thread([this] { run(); });
-    }
-
-    ~DailyScheduledTask() { stop(); if (worker_.joinable()) worker_.join(); }
 
     void stop()
     {
@@ -180,7 +185,7 @@ private:
         std::unique_lock<std::mutex> lock(mutex_);
 
         auto now = system_clock::now();
-        next_ = next_time_at(hour_, minute_, second_, now);
+        next_ = next_time_point_at(hour_, minute_, second_, now);
 
         // If we're starting right after today's slot already passed and
         // catch-up is requested, fire almost immediately instead of
@@ -213,7 +218,7 @@ private:
 
             // Schedule the next occurrence strictly after the one that
             // just fired, so a slow tick doesn't cause a double-fire.
-            next_ = next_time_at(hour_, minute_, second_,
+            next_ = next_time_point_at(hour_, minute_, second_,
                                   next_ + std::chrono::seconds(1));
         }
     }
@@ -254,4 +259,5 @@ int main()
     daily.stop();
     return 0;
 }
+#endif
 #endif

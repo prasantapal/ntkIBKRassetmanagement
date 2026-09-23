@@ -1,7 +1,9 @@
 /* Copyright (C) 2026 Interactive Brokers LLC. All rights reserved. This code is subject to the terms
  * and conditions of the IB API Non-Commercial License or the IB API Commercial License, as applicable. */
 
+
 #include "StdAfx.h"
+
 #include "TestCppClient.h"
 #include <locale.h>
 #include <fmt/format.h> // For general formatting configurations
@@ -46,8 +48,6 @@
 #include <fstream>
 #include <cstdint>
 #include <sstream>
-
-
 
 #define BOLD "\033[1m"
 #define GRAY "\033[90m"
@@ -102,6 +102,7 @@ TestCppClient::TestCppClient() :
   , m_orderId(0)
   , m_extraAuth(false)
 {
+  ctor_helpers();
 }
 
 
@@ -2089,7 +2090,7 @@ void TestCppClient::tickPrice(int reqId, TickType field, double price, const Tic
 }
 void TestCppClient::tickSize(int reqId, TickType field, Decimal size) {
 
-//  std::cout << RED << "size: reqId:" << reqId << " field:" << field << " " << DecimalFunctions::decimalStringToDisplay(size) << RESET << std::endl;
+  //  std::cout << RED << "size: reqId:" << reqId << " field:" << field << " " << DecimalFunctions::decimalStringToDisplay(size) << RESET << std::endl;
 
   int tick_size = ::atoi(DecimalFunctions::decimalStringToDisplay(size).c_str());
   current_price_list_[reqId].tick_size_[field] = tick_size;
@@ -3151,7 +3152,7 @@ void TestCppClient::print_position_details() {
     fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black),"{}\n","Position price request ends!");
 
 
-     fmt::print("{:-<20}\n", ""); 
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::teal) | bg(fmt::color::black),"{:-<100}\n", ""); 
     std::map<std::string, AssetPrice> ticker_price_map;
 
     for(auto current_price:current_price_list_) {
@@ -3166,13 +3167,13 @@ void TestCppClient::print_position_details() {
       ss.str("");
 
 
-        float bid_ask_percent = 100.0*(current_price.second.ask_price_ - current_price.second.bid_price_)/ current_price.second.bid_price_;
-        float bid_ask_percent_renormalized = bid_ask_percent*100.0f;
+      float bid_ask_percent = 100.0*(current_price.second.ask_price_ - current_price.second.bid_price_)/ current_price.second.bid_price_;
+      float bid_ask_percent_renormalized = bid_ask_percent*100.0f;
 
 
 
 
-      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << "(" << bid_ask_delta << "," << bid_ask_delta_factor << "," << bid_ask_percent << ")" << std::endl;
+      std::cout  << ticker << ":l:" << current_price.second.last_price_ << " b:" << current_price.second.bid_price_ << " a:" << current_price.second.ask_price_ << "(" << bid_ask_delta << "," << bid_ask_delta_factor << "," << bid_ask_percent_renormalized << ")" << std::endl;
 
       //      auto tick_size = current_price_list_[counter].tick_size_.resize(AssetPrice::tick_size_field_max_length_);
 
@@ -4091,6 +4092,340 @@ void TestCppClient::updateConfigResponseProtoBuf(const protobuf::UpdateConfigRes
   printf("==== Update Config Response End ====\n");
 }
 
+void TestCppClient::initiate_task_schedulers() {
+  DailyScheduledTask daily_3_00(*scheduler_threadpool_, 3, 00, 0, [] {
+      std::cout << "[worker] Daily 3:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_3_15(*scheduler_threadpool_, 3, 15, 0, [] {
+      std::cout << "[worker] Daily 3:15 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  // Fire every day at 16:15:00 local time.
+  DailyScheduledTask daily_4_00(*scheduler_threadpool_, 4, 00, 0, [] {
+      std::cout << "[worker] Daily 4:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_8_00(*scheduler_threadpool_, 8, 0, 0, [] {
+      std::cout << "[worker] Daily 8:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_8_45(*scheduler_threadpool_, 8, 45, 0, [] {
+      std::cout << "[worker] Daily 8:45 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_8_55(*scheduler_threadpool_, 8, 55, 0, [] {
+      std::cout << "[worker] Daily 8:55 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+  DailyScheduledTask daily_9_15(*scheduler_threadpool_, 9, 15, 0, [] {
+      std::cout << "[worker] Daily 9:15 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_10_00(*scheduler_threadpool_, 10, 00, 0, [] {
+      std::cout << "[worker] Daily 10:00 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_12_00(*scheduler_threadpool_, 12, 00, 0, [] {
+      std::cout << "[worker] Daily 12:00 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_14_30(*scheduler_threadpool_, 14, 30, 0, [] {
+      std::cout << "[worker] Daily 2:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+
+
+  DailyScheduledTask daily_15_30(*scheduler_threadpool_, 15, 30, 0, [] {
+      std::cout << "[worker] Daily 3:30 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+
+  DailyScheduledTask daily_15_45(*scheduler_threadpool_, 15, 45, 0, [] {
+      std::cout << "[worker] Daily 3:45 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_15_48(*scheduler_threadpool_, 15, 48, 0, [] {
+      std::cout << "[worker] Daily 3:48 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_15_50(*scheduler_threadpool_, 15, 50, 0, [] {
+      std::cout << "[worker] Daily 3:50 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_15_55(*scheduler_threadpool_, 15, 55, 0, [] {
+      std::cout << "[worker] Daily 3:55 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_16_00(*scheduler_threadpool_, 16, 00, 0, [] {
+      std::cout << "[worker] Daily 4:00 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+
+  DailyScheduledTask daily_16_30(*scheduler_threadpool_, 16, 30, 0, [] {
+      std::cout << "[worker] Daily 4:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_17_30(*scheduler_threadpool_, 17, 30, 0, [] {
+      std::cout << "[worker] Daily 5:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_18_30(*scheduler_threadpool_, 18, 30, 0, [] {
+      std::cout << "[worker] Daily 6:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+  DailyScheduledTask daily_19_30(*scheduler_threadpool_, 19, 30, 0, [] {
+      std::cout << "[worker] Daily 7:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_19_45(*scheduler_threadpool_, 19, 45, 0, [] {
+      std::cout << "[worker] Daily 7:45 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_01(*scheduler_threadpool_, 20, 01, 0, [] {
+      std::cout << "[worker] Daily 8:01 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_15(*scheduler_threadpool_, 20, 15, 0, [] {
+      std::cout << "[worker] Daily 8:15 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_20_30(*scheduler_threadpool_, 20, 30, 0, [] {
+      std::cout << "[worker] Daily 8:30 PM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+  DailyScheduledTask daily_3_45(*scheduler_threadpool_, 3, 45, 0, [] {
+      std::cout << "[worker] Daily 3:45 AM task running on pool.\n";
+      bool is_terminated = false;
+      while(!is_terminated) {
+      fmt::print(fmt::emphasis::bold | fg(fmt::color::red) | bg(fmt::color::black), "EOD scheduling\n");
+
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+
+      };
+      // ... do the actual work here ...
+      });
+
+
+}
+
 void TestCppClient::ctor_helpers() {
   contract_template.symbol = {"LLY"};
   contract_template.secType =  {"STK"};
@@ -4102,8 +4437,22 @@ void TestCppClient::ctor_helpers() {
   print_once_positions_ = print_once_positions_default_;
 
   account_value_ = account_value_default_;
-
   buying_power_ = buying_power_default_;
+
+  threadpool_priority_.reset(new ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>(thread_pool_session_scheduler_size_));
+  scheduler_threadpool_.reset(new ThreadPoolSessionScheduler(thread_pool_session_scheduler_size_));
+
+  if(should_initiate_task_schedulers_){
+    initiate_task_schedulers();
+  }
+
+
+
+  //  {
+  //    auto t = std::chrono::system_clock::to_time_t(daily.next_fire_time());
+  //    std::cout << "Next fire time: " << std::ctime(&t);
+  //  }
+  //
 }
 
 
@@ -4137,6 +4486,7 @@ std::map<std::string,std::map<int,OrderStatus>> TestCppClient::open_order_status
 
 
 
+std::unique_ptr<ThreadPoolSessionScheduler> TestCppClient::scheduler_threadpool_;
 
 std::map<int, AssetPrice> TestCppClient::current_price_list_;
 
@@ -4146,9 +4496,11 @@ Json::Value TestCppClient::account_summary_;
 std::mutex TestCppClient::open_order_update_lock_mtx_;
 
 
-int TestCppClient::threadpool_size_ = {16};
+bool TestCppClient::should_initiate_task_schedulers_ = {should_initiate_task_schedulers_default_};
 
-//    ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> TestCppClient::threadpool_priority_;
+int TestCppClient::threadpool_size_ = {threadpool_size_default_};
+
+std::unique_ptr<ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>> TestCppClient::threadpool_priority_;
 CurrentPositionsActions::CurrentPositionsActions() {
 
 }

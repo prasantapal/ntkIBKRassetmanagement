@@ -7,6 +7,7 @@
 #define FMT_HEADER_ONLY
 #include <iostream>
 #include <fmt/core.h>
+#include <memory>
 #include <fmt/color.h>
 #include <fmt/ranges.h>
 #include <numeric>
@@ -49,9 +50,9 @@
 #include <chrono>
 #include <cmath>
 
-
 #include "ThreadPool.hpp"
 
+#include "ThreadpoolSessionScheduler.hpp"
 
 #include "EWrapper.h"
 #include "EReaderOSSignal.h"
@@ -74,7 +75,6 @@ constexpr size_t ITERATIONS = 100000UL;
 #include <iostream>
 #include <chrono>
 #include <cmath>
-#include <ThreadPool.hpp>
 
 
 
@@ -85,6 +85,10 @@ constexpr size_t ITERATIONS = 100000UL;
 //constexpr size_t _size = 10UL;
 //constexpr size_t TASKS = 10000UL;
 //constexpr size_t ITERATIONS = 100000UL;
+
+
+
+
 
 #if THREADPOOL_ENABLE_SINGLETON
 void runThreadPoolManager(void) {
@@ -97,6 +101,8 @@ void runThreadPoolManager(void) {
 
 }// end void runThreadPoolManager(void)
 #endif
+
+
 
 
 struct OrderStatus {
@@ -491,10 +497,22 @@ class TestCppClient : public EWrapper {
     //   std::set<CurrentPositionsActions> current_positions_action_modes_; 
 
     //    ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> threadpool_priority_(12);
-    static ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY> threadpool_priority_;
+
+    static std::unique_ptr<ThreadPool::ThreadPool<ThreadPool::ThreadMode::PRIORITY>> threadpool_priority_;
     static int threadpool_size_;
+    static int constexpr threadpool_size_default_ = {16};
+
     std::set<std::string> streaming_data_candidates_;
     static float constexpr bid_ask_lowest_denominator_ = {0.01};
+    static  int constexpr thread_pool_session_scheduler_size_ = {4};
+    static std::unique_ptr<ThreadPoolSessionScheduler> scheduler_threadpool_;
+
+
+  static bool constexpr should_initiate_task_schedulers_default_ = {true};
+  static bool should_initiate_task_schedulers_;
+  public:
+void  initiate_task_schedulers();
+
 
 };
 
