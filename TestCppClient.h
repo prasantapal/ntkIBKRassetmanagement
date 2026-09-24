@@ -551,8 +551,11 @@ class TestCppClient : public EWrapper {
 
 
 
-    std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_value_;
-    std::map<std::string, std::unique_ptr<boost::circular_buffer<float>>> tracked_circular_buffer_tick_size_;
+    std::map<int, boost::circular_buffer<AssetPrice>> tracked_circular_buffer_tick_value_;
+    std::map<int, boost::circular_buffer<float>> tracked_circular_buffer_tick_size_;
+
+    static int constexpr tracked_circular_buffer_tick_value_size_ = {5000};
+
 
     std::set<std::string> tracked_assets_;
     std::vector<int> tracked_assets_IDs_;
@@ -576,10 +579,17 @@ class TestCppClient : public EWrapper {
     boost::circular_buffer<PortfolioSnapshot> portfolio_update_trajectory_;
     static int constexpr portfolio_update_trajectory_size_ = {5000};
 
+
+
+
     static int constexpr portfolio_update_print_freqency_ = {5};
     static int  portfolio_update_counter_;
 
+    static bool should_schedule_regular_tasks_;
+    static bool constexpr should_schedule_regular_tasks_default_ = {false};
 
+  public:
+    void start_tracking();
 };
 
 

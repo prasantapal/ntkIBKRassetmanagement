@@ -157,10 +157,11 @@ int main(int argc, char** argv) {
     std::cout << "napping for " << napping_time << " secs" << std::endl;
     client.account_summary();
     client.trigger_account_update();
+    client.start_tracking();
 
     while( client.isConnected()) {
 
-      client.print_position_details();
+      // client.print_position_details();
 
       //     std::string asset = {"SOXS"};
       //     auto price = client.get_ticker_price(asset);
