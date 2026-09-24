@@ -119,6 +119,14 @@ struct OrderStatus {
 
 };
 
+struct OpenOrderStat {
+  std::string order_type;
+  int order_id = order_id;
+  Decimal totalQuantity;
+  Decimal filledQuantity;
+
+};
+
 struct OpenOrderInfo {
   int orderId;
   Contract contract;
@@ -313,14 +321,14 @@ struct CurrentPositionsActions {
 
 
 struct PortfolioSnapshot {
-    Contract contract;
-    Decimal position;
-    double marketPrice;
-    double marketValue;
-    double averageCost;
-    double unrealizedPNL;
-    double realizedPNL;
-    std::string accountName;
+  Contract contract;
+  Decimal position;
+  double marketPrice;
+  double marketValue;
+  double averageCost;
+  double unrealizedPNL;
+  double realizedPNL;
+  std::string accountName;
 };
 
 //! [ewrapperimpl]
@@ -553,6 +561,7 @@ class TestCppClient : public EWrapper {
     std::map<std::string, int> tracked_assets_IDs_symbol_map_;
     std::map<int, std::string> tracked_assets_IDs_symbol_map_inverse_;
     static float constexpr limit_price_percent_above_current_level_ = {0.005};
+    static float constexpr limit_price_offset_above_current_level_ = {0.1};
   public:
     void account_summary();
     void trigger_account_update();
@@ -565,7 +574,12 @@ class TestCppClient : public EWrapper {
     Json::Value account_update_state_live_;
 
     boost::circular_buffer<PortfolioSnapshot> portfolio_update_trajectory_;
-   static int constexpr portfolio_update_trajectory_size_ = {5000};
+    static int constexpr portfolio_update_trajectory_size_ = {5000};
+
+    static int constexpr portfolio_update_print_freqency_ = {5};
+    static int  portfolio_update_counter_;
+
+
 };
 
 
