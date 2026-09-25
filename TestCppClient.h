@@ -559,8 +559,11 @@ class TestCppClient : public EWrapper {
     std::set<std::string> tracked_assets_;
     std::vector<int> tracked_assets_IDs_;
     std::vector<std::future<void>> tracked_assets_IDs_futures_;
+  private:
+    std::vector<int> all_order_ids_;
   public:
     void cancel_all_tick_by_tick_data_streaming();
+    void cancel_all_orders();
 
 
     /////////////////////////////////////////////////////////////////

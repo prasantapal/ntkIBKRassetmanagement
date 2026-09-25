@@ -4099,6 +4099,19 @@ void TestCppClient::historicalTicksLast(int reqId, const std::vector<HistoricalT
 }
 //! [historicaltickslast]
 
+
+void TestCppClient::cancel_all_orders() {
+
+  std::cout << "cancelling all orders:" << std::endl;
+
+  m_pClient->reqGlobalCancel(OrderSamples::OrderCancelEmpty());
+
+//  for(const auto& order_id:all_order_ids_) {
+//    std::cout << "cancelling order id:"  << order_id << std::endl;
+//    m_pClient->cancelOrder(order_id, "");
+//  }
+}
+
 void TestCppClient::cancel_all_tick_by_tick_data_streaming() {
   for(const auto& assetId:tracked_assets_IDs_symbol_map_inverse_){
     m_pClient->cancelTickByTickData(assetId.first);
