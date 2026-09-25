@@ -2072,39 +2072,6 @@ void TestCppClient::error(int id, time_t errorTime, int errorCode, const std::st
 
 // KEY
 void TestCppClient::tickPrice(int reqId, TickType field, double price, const TickAttrib& attribs) {
-
-  if(tracked_circular_buffer_tick_value_.contains(reqId)) {
-    AssetPrice asset_price;
-
-    switch (field) {
-      case LAST: {
-                   // std::cout << "Last Price: " << reqId << ": " << price << "\n";
-                   asset_price.last_price_ = price;
-                 }
-                 break;
-      case BID: {
-                  // std::cout << "Bid Price: " << price << "\n";
-                  asset_price.bid_price_ = price;
-                }
-                break;
-      case ASK: {
-
-                  // std::cout << "Ask Price: " << price << "\n";
-                  asset_price.ask_price_ = price;
-
-                }
-                break;
-      default:
-                break;
-    }
-
-    // tracked_assets_IDs_symbol_map_
-
-    tracked_circular_buffer_tick_value_[reqId].push_back(asset_price);
-    std::cout << "buffer udpate:" << reqId << " " << tracked_assets_IDs_symbol_map_inverse_[reqId] << " " << tracked_circular_buffer_tick_value_[reqId].size() << std::endl;
-
-  }else {
-
     // std::cout << "reqId:" << reqId << std::endl;
     switch (field) {
       case LAST: {
@@ -2128,7 +2095,6 @@ void TestCppClient::tickPrice(int reqId, TickType field, double price, const Tic
                 break;
     }
 
-  }
 
 
 }
@@ -4133,6 +4099,14 @@ void TestCppClient::historicalTicksLast(int reqId, const std::vector<HistoricalT
 }
 //! [historicaltickslast]
 
+void TestCppClient::cancel_all_tick_by_tick_data_streaming() {
+  for(const auto& assetId:tracked_assets_IDs_symbol_map_inverse_){
+    m_pClient->cancelTickByTickData(assetId.first);
+  }
+
+}
+
+
 //! [tickbytickalllast]
 void TestCppClient::tickByTickAllLast(int reqId, int tickType, time_t time, double price, Decimal size, const TickAttribLast& tickAttribLast, const std::string& exchange, const std::string& specialConditions) {
   char timeStr[80];
@@ -4143,11 +4117,17 @@ void TestCppClient::tickByTickAllLast(int reqId, int tickType, time_t time, doub
   ctime_r(&time, timeStr);
 #endif
 
-  printf("Tick-By-Tick. ReqId: %d, TickType: %s, Time: %s, Price: %s, Size: %s, PastLimit: %d, Unreported: %d, Exchange: %s, SpecialConditions:%s\n",
-      reqId, (tickType == 1 ? "Last" : "AllLast"), timeStr, Utils::doubleMaxString(price).c_str(), DecimalFunctions::decimalStringToDisplay(size).c_str(), tickAttribLast.pastLimit, tickAttribLast.unreported, exchange.c_str(), specialConditions.c_str());
+  //  printf("Tick-By-Tick. ReqId: %d, TickType: %s, Time: %s, Price: %s, Size: %s, PastLimit: %d, Unreported: %d, Exchange: %s, SpecialConditions:%s\n",
+  //      reqId, (tickType == 1 ? "Last" : "AllLast"), timeStr, Utils::doubleMaxString(price).c_str(), DecimalFunctions::decimalStringToDisplay(size).c_str(), tickAttribLast.pastLimit, tickAttribLast.unreported, exchange.c_str(), specialConditions.c_str());
+  //
+  // tracked_assets_IDs_symbol_map_
 
-
-
+  tracked_circular_buffer_tick_value_[reqId].push_back(price);
+  //    std::cout << "buffer udpate:" << reqId << " " << tracked_assets_IDs_symbol_map_inverse_[reqId] << " " << tracked_circular_buffer_tick_value_[reqId].size() << "/" << tracked_circular_buffer_tick_value_[reqId].capacity() << std::endl;
+  for(auto& it:tracked_circular_buffer_tick_value_) {
+    std::cout << tracked_assets_IDs_symbol_map_inverse_[it.first] << " " << tracked_circular_buffer_tick_value_[it.first].size() <<  " " << tracked_circular_buffer_tick_value_[it.first].capacity() << "\t";
+  }
+  std::cout << std::endl;
 
 }
 //! [tickbytickalllast]
@@ -4183,8 +4163,16 @@ void TestCppClient::orderBound(long long permId, int clientId, int orderId) {
 }
 //! [orderbound]
 
-void TestCppClient::completedOrder(const Contract& contract, const Order& order, const OrderState& orderState) {}
-void TestCppClient::completedOrdersEnd() {}
+void TestCppClient::completedOrder(const Contract& contract, const Order& order, const OrderState& orderState) {
+
+  std::cout << "order completed conId:" << contract.conId <<   " " << contract.symbol << std::endl;
+
+}
+
+void TestCppClient::completedOrdersEnd() {
+
+
+}
 
 //! [replacefaend]
 void TestCppClient::replaceFAEnd(int reqId, const std::string& text) {

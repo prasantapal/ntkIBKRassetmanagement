@@ -14,8 +14,8 @@ const unsigned SLEEP_TIME_WATCH = 15000; //ms
 
 // Define a custom facet for grouping digits
 struct separate_thousands : std::numpunct<char> {
-    char_type do_thousands_sep() const override { return ','; } // Use comma
-    std::string do_grouping() const override { return "\3"; }    // Group by 3 digits
+  char_type do_thousands_sep() const override { return ','; } // Use comma
+  std::string do_grouping() const override { return "\3"; }    // Group by 3 digits
 };
 
 
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
   srand(static_cast<unsigned int>(time(NULL)));
   int random_stock_index = rand()%assets.size();
   std::string random_stock = assets.at(random_stock_index);
-//   fmt::print(fg(fmt::color::purple), "{}\n",assets);
+  //   fmt::print(fg(fmt::color::purple), "{}\n",assets);
 
   //  std::transform(random_etf.begin(), random_etf.end(), random_etf_upper.begin(), [](unsigned char c) {
   //      return std::toupper(c);
@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
   options.add_options()
     ("d,debug", "Enable debugging") // a bool parameter
     ("c,clientID", "client id", cxxopts::value<int>()->default_value("0"))
+    ("p,port", "port", cxxopts::value<int>()->default_value("-1"))
     ("v,verbose", "Verbose output", cxxopts::value<bool>()->default_value("false"))
     ;
 
@@ -97,6 +98,13 @@ int main(int argc, char** argv) {
   clientId = result["c"].as<int>();
   std::cout << "clientId:" << clientId << std::endl;
 
+  std::set<int> allow_ports;
+  allow_ports.insert(4002);
+  allow_ports.insert(4001);
+  allow_ports.insert(4000);
+  allow_ports.insert(4003);
+  int external_port = result["p"].as<int>();
+
 
 
   const char* host = {""};
@@ -105,6 +113,12 @@ int main(int argc, char** argv) {
   int IBKR_GATEWAY_PORT = {4002};
   //if (port <= 0)
   port = IBKR_GATEWAY_PORT;
+  if(allow_ports.contains(external_port)) {
+    std::cout << "setting port " << port << " to " << external_port << std::endl;
+    port = external_port;
+  }
+
+
   const char* connectOptions = {"+PACEAPI"};
   // const char* connectOptions = argc > 3 ? argv[3] : "+PACEAPI";
 
@@ -112,24 +126,14 @@ int main(int argc, char** argv) {
   printf( "Start of C++ Socket Client Test %u\n", attempt);
 
 
-  Contract contract;
-  contract.symbol = "AAPL";
-  contract.secType = "STK";
-  //  contract.exchange = "SMART";
-  contract.currency = "USD";
+  bool stop_dancing = {false};
 
-  Order order;
-  order.action = "BUY";
-  order.orderType = "LMT";
-  order.totalQuantity = 100;
-  order.lmtPrice = 150.00;
-  order.tif = "DAY"; // Time in Force
-                     //
-  int m_orderId = {0};
-
-  for (;;) {
+  do {
     ++attempt;
     printf( "Attempt %u of %u\n", attempt, MAX_ATTEMPTS);
+    if(attempt >= MAX_ATTEMPTS) {
+      stop_dancing = true;
+    }
 
     TestCppClient client;
 
@@ -183,7 +187,7 @@ int main(int argc, char** argv) {
 
     printf( "Sleeping %u seconds before next attempt\n", SLEEP_TIME);
     std::this_thread::sleep_for(std::chrono::seconds(SLEEP_TIME));
-  }
+  }while(!stop_dancing);
 
   printf ( "End of C++ Socket Client Test\n");
 }

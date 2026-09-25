@@ -551,16 +551,19 @@ class TestCppClient : public EWrapper {
 
 
 
-    std::map<int, boost::circular_buffer<AssetPrice>> tracked_circular_buffer_tick_value_;
+    std::map<int, boost::circular_buffer<float>> tracked_circular_buffer_tick_value_;
     std::map<int, boost::circular_buffer<float>> tracked_circular_buffer_tick_size_;
-
-    static int constexpr tracked_circular_buffer_tick_value_size_ = {5000};
+    static int constexpr tracked_circular_buffer_tick_value_size_ = {100000};
 
 
     std::set<std::string> tracked_assets_;
     std::vector<int> tracked_assets_IDs_;
     std::vector<std::future<void>> tracked_assets_IDs_futures_;
+  public:
+    void cancel_all_tick_by_tick_data_streaming();
 
+
+    /////////////////////////////////////////////////////////////////
     std::map<std::string, int> tracked_assets_IDs_symbol_map_;
     std::map<int, std::string> tracked_assets_IDs_symbol_map_inverse_;
     static float constexpr limit_price_percent_above_current_level_ = {0.005};
