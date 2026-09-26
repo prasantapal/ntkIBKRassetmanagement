@@ -38,6 +38,7 @@
 #include "NewsSamplesProto.h"
 #include "MarketDataSamplesProto.h"
 #include "CassandraInterface.hpp"
+#include "fifo_reader.hpp"
 
 #include <stdio.h>
 #include <chrono>
@@ -64,6 +65,46 @@
 #define CYAN    "\033[36m"
 const int PING_DEADLINE = 2; // seconds
 const int SLEEP_BETWEEN_PINGS = 30; // seconds
+
+
+#include <string>
+#include <cstdlib>
+#include <stdexcept>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <pwd.h>
+#endif
+
+std::string get_home_path() {
+#ifdef _WIN32
+    // Try USERPROFILE first
+    if (const char* home = std::getenv("USERPROFILE")) {
+        return std::string(home);
+    }
+    // Fallback: HOMEDRIVE + HOMEPATH
+    const char* drive = std::getenv("HOMEDRIVE");
+    const char* path  = std::getenv("HOMEPATH");
+    if (drive && path) {
+        return std::string(drive) + std::string(path);
+    }
+    throw std::runtime_error("Unable to determine home directory (Windows)");
+#else
+    // POSIX (macOS, Linux)
+    if (const char* home = std::getenv("HOME")) {
+        return std::string(home);
+    }
+    // Fallback: query passwd database (handles cases where HOME is unset,
+    // e.g. some daemon/cron contexts)
+    if (struct passwd* pw = getpwuid(getuid())) {
+        return std::string(pw->pw_dir);
+    }
+    throw std::runtime_error("Unable to determine home directory (POSIX)");
+#endif
+}
 
 
 // Example function to convert double/float to IBKR Decimal via string
@@ -95,6 +136,7 @@ CurrentAccountState::~CurrentAccountState() {
   dtor_helpers();
 
 }
+
 
 
 void CurrentAccountState::print() const {
@@ -4844,20 +4886,54 @@ void TestCppClient::start_tracking() {
 
 
 }
+void TestCppClient::ctor_inits() {
 
+  should_stop_fifo_reading_ = should_stop_fifo_reading_default_;
+
+  fifo_path_ =  {std::string(fifo_path_default_)};
+  HOME_PATH_ = {std::string(HOME_PATH_DEFAULT_)};
+
+  path_separator_ = {std::string(path_separator_default_)};
+  neutheos_home_path_ = {std::string(neutheos_home_path_default_)};
+
+
+  fifo_input_path_ = std::string(fifo_input_path_default_);
+  fifo_file_name_ = std::string(fifo_file_name_default_);
+
+  HOME_PATH_ = get_home_path();
+  std::cout << "HOME_PATH:" << HOME_PATH_ << std::endl;
+
+  fifo_path_ = HOME_PATH_ + path_separator_ +  neutheos_home_path_ + path_separator_ + fifo_input_path_ + path_separator_ + fifo_file_name_;
+
+  std::cout  << "fifo_path:" << fifo_path_ << std::endl;
+  has_initial_account_update_download_completed_ = has_initial_account_update_download_completed_default_;
+
+  std::filesystem::path fifo_path(fifo_path_);
+  // check if fifo path exists
+  if(!std::filesystem::exists(fifo_path)){
+    std::cout << "sorry path:" <<  fifo_path_ << " does not exist " << std::endl;
+    exit(0);
+  }
+
+
+    ////// CONFIG
+  config_filename_ = std::string(config_filename_default_);
+  config_filepath_relative_to_run_location_ = std::string(config_filepath_relative_to_run_location_);
+  runtime_path_ = std::string(EMPTY_STRING_);
+  current_executable_path_ = std::string(EMPTY_STRING_);
+}
 
 void TestCppClient::ctor_helpers() {
 
-  has_initial_account_update_download_completed_ = has_initial_account_update_download_completed_default_;
+
+  ctor_inits();
+  getchar();
+
   portfolio_update_trajectory_.set_capacity(portfolio_update_trajectory_size_);
 
   if(should_schedule_regular_tasks_) {
     initiate_task_schedulers();
   }
-
-
-
-
 
 
 
@@ -4891,6 +4967,21 @@ void TestCppClient::ctor_helpers() {
   //
 }
 
+
+void TestCppClient::start_fifo_reader() {
+
+  FifoReader reader(fifo_path_);
+  reader.start();
+
+  std::string line;
+  while(!should_stop_fifo_reading_){
+    while (reader.waitForLine(line)) {
+      compat::println("got: {}", line);
+    }
+  }
+
+  reader.stop();
+}
 
 bool TestCppClient::req_position_end_cond_var_trigger_ = {req_position_end_cond_var_trigger_default_};
 std::mutex TestCppClient::req_position_end_mtx_;
@@ -4957,18 +5048,20 @@ TmuxManagement TestCppClient::tmux_management;
 template<typename T>
 void TmuxManagement::send_msg_to_last_ttys(const T&& msg) {
 
-  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
+  int tmux_index = {tmux_ttys_.size()-1};
+  if(tmux_index < 0) {
+    std::cerr << "sorry ...tmux message can't be sent" << std::endl;
+    return;
+  }
+
+  auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_index);
 
   std::string&& command = std::string("echo ") + std::string(msg)  + std::string(" > ") + the_last_TMUX_warrior;
 
   //   std::cout << "command:" << command << std::endl;
   std::erase(command, '\n');
   std::erase(command, '\r');
-
-
   ::exec(command);
-
-
   //  command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
   //
   //  ::exec(command);
@@ -4986,18 +5079,14 @@ void TmuxManagement::populate_tmux_ttys() {
   //
   //  fmt::print(fg(fmt::color::green),"{}\n",tmux_ttys_);
 
-
   auto the_last_TMUX_warrior = tmux_ttys_.at(tmux_ttys_.size()-1);
 
   std::string command = std::string("echo ") + std::string("hello tty:") +  the_last_TMUX_warrior  + std::string(" > ") + the_last_TMUX_warrior;
 
   std::cout << command << std::endl;
-
   ::exec(command);
 
-
   command = std::string("echo ") + std::string("\n") +   std::string(" > ") + the_last_TMUX_warrior;
-
   ::exec(command);
 }
 

@@ -159,9 +159,10 @@ int main(int argc, char** argv) {
 
     std::this_thread::sleep_for(std::chrono::seconds(napping_time));
     std::cout << "napping for " << napping_time << " secs" << std::endl;
-    client.account_summary();
-    client.trigger_account_update();
-    client.start_tracking();
+    client.start_fifo_reader();
+  //  client.account_summary();
+ //   client.trigger_account_update();
+//    client.start_tracking();
 
     while( client.isConnected()) {
 

@@ -595,7 +595,52 @@ class TestCppClient : public EWrapper {
     static bool constexpr should_schedule_regular_tasks_default_ = {false};
 
   public:
+
     void start_tracking();
+    void ctor_inits();
+
+  public:
+    void start_fifo_reader();
+
+
+  private:
+    std::string fifo_path_;
+    static std::string_view constexpr fifo_path_default_ = {""};
+
+    std::string HOME_PATH_;
+    static std::string_view constexpr HOME_PATH_DEFAULT_ = {""};
+
+    std::string  path_separator_;
+    static std::string_view constexpr path_separator_default_ = {"/"};
+
+    std::string neutheos_home_path_;
+    static std::string_view constexpr neutheos_home_path_default_ = {".neutheos"};
+
+    std::string fifo_input_path_;
+    static std::string_view constexpr fifo_input_path_default_ = {"input"};
+
+    std::string fifo_file_name_;
+    static std::string_view constexpr fifo_file_name_default_ {"neutheos_command_source"};
+
+    bool should_stop_fifo_reading_;
+    static bool constexpr should_stop_fifo_reading_default_ = {false};
+
+  public:
+    void load_config_json();
+  private:
+    ////// CONFIG
+    std::string config_filename_;
+    static std::string_view constexpr config_filename_default_ = {"config.json"};
+
+    std::string config_filepath_relative_to_run_location_;
+    static std::string_view constexpr config_filepath_relative_to_run_location_default_ = {".config"};
+
+    std::string runtime_path_;
+    static std::string constexpr EMPTY_STRING_ = {""};
+
+    std::string  current_executable_path_;
+
+
 };
 
 
